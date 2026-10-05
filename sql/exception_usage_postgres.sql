@@ -1,14 +1,15 @@
 -- =====================================================================
 --  Exception kullanım envanteri (PostgreSQL 9.5+)
 --
---  Mevcut tablolar (değiştirilmez, sadece okunur ve FK ile referans verilir):
+--  Mevcut tablolar (değiştirilmez, sadece okunur; FK ile bağlanmaz):
 --    env.java_class  (id, fqcn, ...)
 --    env.java_method (id, class_id, name, ...)
 --
---  Sütun adları sizde farklıysa aşağıdaki REFERENCES satırlarını ve
---  scanner.properties içindeki db.* ayarlarını birlikte güncelleyin.
---  java_class.id / java_method.id integer ise de sorun yok: bigint sütun
---  integer sütuna FK ile bağlanabilir.
+--  Sütun adları sizde farklıysa scanner.properties içindeki db.* ayarlarını güncelleyin.
+--
+--  Bu tabloları önceki sürümle kurduysanız java_class / java_method FK'lerini kaldırın:
+--    ALTER TABLE env.exception_usage DROP CONSTRAINT IF EXISTS exception_usage_class_id_fkey;
+--    ALTER TABLE env.exception_usage DROP CONSTRAINT IF EXISTS exception_usage_method_id_fkey;
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -51,8 +52,12 @@ CREATE TABLE IF NOT EXISTS env.exception_scan_run (
 CREATE TABLE IF NOT EXISTS env.exception_usage (
     id               bigserial    PRIMARY KEY,
     scan_run_id      bigint       NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
-    class_id         bigint       REFERENCES env.java_class (id),
-    method_id        bigint       REFERENCES env.java_method (id),
+    -- Tarama anındaki env.java_class / env.java_method id'leri. FK yok: o tablolar her
+    -- yüklemede TRUNCATE + INSERT ile yenilendiği için FK yüklemeyi engeller ve id'ler
+    -- sonraki yüklemede değişebilir. Kalıcı eşleştirme için class_fqcn ve method_signature
+    -- sütunlarındaki metin kullanılmalı (bkz. aşağıdaki örnek sorgu).
+    class_id         bigint,
+    method_id        bigint,
     usage_type_code  varchar(50)  NOT NULL REFERENCES env.exception_usage_type (type_code),
 
     -- Eşleştirme sonucu:
@@ -70,7 +75,7 @@ CREATE TABLE IF NOT EXISTS env.exception_usage (
     module           varchar(300),
     file_path        varchar(1000) NOT NULL,
     line_no          integer      NOT NULL,
-    class            varchar(1000) NOT NULL,           -- kodda bulunan sınıf (anonim sınıf dahil)
+    class_fqcn       varchar(1000) NOT NULL,           -- kodda bulunan sınıf (anonim sınıf dahil)
     method_signature varchar(1000),                    -- kodda bulunan metot: getRate(String, String)
     exception_class  varchar(300),                     -- CSException, alt sınıfı veya put(...)
     error_code       integer,                          -- new CSException(0, ...) -> 0
@@ -93,8 +98,14 @@ CREATE INDEX IF NOT EXISTS ix_exception_usage_type   ON env.exception_usage (usa
 --  Görünümler
 -- ---------------------------------------------------------------------
 
+-- Görünümler sütun listesini oluşturuldukları anda sabitler (u.* dahil). Tablo değiştiğinde
+-- eski sütun adlarıyla kalmasınlar diye her çalıştırmada silinip yeniden oluşturulur.
+DROP VIEW IF EXISTS env.v_exception_usage_summary;
+DROP VIEW IF EXISTS env.v_exception_usage_trend;
+DROP VIEW IF EXISTS env.v_exception_usage_latest;
+
 -- Son taramanın kullanımları, sınıf ve metot bilgileriyle
-CREATE OR REPLACE VIEW env.v_exception_usage_latest AS
+CREATE VIEW env.v_exception_usage_latest AS
 SELECT u.*,
        t.type_name,
        t.action,
@@ -104,7 +115,7 @@ SELECT u.*,
  WHERE u.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE finished_at IS NOT NULL);
 
 -- Son tarama: proje ve kullanım tipine göre sayılar (ekiplere gönderilecek özet)
-CREATE OR REPLACE VIEW env.v_exception_usage_summary AS
+CREATE VIEW env.v_exception_usage_summary AS
 SELECT project_key,
        repo,
        usage_type_code,
@@ -117,7 +128,7 @@ SELECT project_key,
  GROUP BY project_key, repo, usage_type_code, type_name, is_legacy;
 
 -- Taramadan taramaya ilerleme: eski kullanım sayısı azalmalı
-CREATE OR REPLACE VIEW env.v_exception_usage_trend AS
+CREATE VIEW env.v_exception_usage_trend AS
 SELECT r.id          AS scan_run_id,
        r.started_at,
        u.project_key,
@@ -128,11 +139,14 @@ SELECT r.id          AS scan_run_id,
  WHERE r.finished_at IS NOT NULL
  GROUP BY r.id, r.started_at, u.project_key, u.usage_type_code;
 
--- Örnek sorgu: bir metotta hangi eski kullanımlar var?
+-- Örnek sorgu: son taramadaki eski kullanımlar, sınıf ve metot envanteriyle.
+-- id'ler envanter yeniden yüklenince değişebileceği için sınıf adıyla ve metot adıyla
+-- (imzanın "(" öncesi) eşleştirilir.
 --   SELECT c.fqcn, m.name, u.usage_type_code, u.line_no, u.message
 --     FROM env.v_exception_usage_latest u
---     JOIN env.java_class  c ON c.id = u.class_id
---     JOIN env.java_method m ON m.id = u.method_id
+--     JOIN env.java_class  c ON c.fqcn = u.class_fqcn
+--     LEFT JOIN env.java_method m ON m.class_id = c.id
+--                               AND split_part(m.name, '(', 1) = split_part(u.method_signature, '(', 1)
 --    WHERE u.is_legacy
 --    ORDER BY c.fqcn, u.line_no;
 

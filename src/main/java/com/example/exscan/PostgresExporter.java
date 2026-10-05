@@ -143,7 +143,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             ir.runId = insertRun(results);
 
             String sql = "INSERT INTO " + db.usageTable + " (scan_run_id, class_id, method_id, usage_type_code,"
-                    + " match_status, match_note, project_key, repo, module, file_path, line_no, class,"
+                    + " match_status, match_note, project_key, repo, module, file_path, line_no, class_fqcn,"
                     + " method_signature, exception_class, error_code, message, usage_context, is_test,"
                     + " code_snippet, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
             PreparedStatement ps = con.prepareStatement(sql);
