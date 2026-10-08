@@ -57,7 +57,7 @@ final class Config {
     final Db db;
     final Ebml ebml;
 
-    /** Ekran (.ebml), region (.ebml) ve Jasper rapor (.dsxml) envanteri ayarları (ebml.*) */
+    /** Ekran (.ebml), region (.ebml), Jasper rapor (.dsxml) ve process envanteri ayarları (ebml.*) */
     static final class Ebml {
 
         enum ProjectNameSource { REPO, REPO_SLUG, MODULE, BITBUCKET_PROJECT }
@@ -80,6 +80,8 @@ final class Config {
         final String popupTable;
         final String regionTable;
         final String reportTable;
+        final String processDir;
+        final String processTable;
 
         Ebml(Properties p) {
             enabled = Boolean.parseBoolean(get(p, "ebml.enabled", "false"));
@@ -88,6 +90,7 @@ final class Config {
             pagePackage = segments(get(p, "ebml.page.package", "ebml.page"));
             popupPackage = segments(get(p, "ebml.popup.package", "ebml.popup"));
             reportPackage = segments(get(p, "ebml.report.package", "ebml.report"));
+            processDir = get(p, "ebml.process.dir", "process").trim();
             sourceRoots = list(get(p, "ebml.source.roots",
                     "src/main/java,src/main/resources,src/java,src/resources,JavaSource,source,resources,src"));
             fileNameWithExtension = Boolean.parseBoolean(get(p, "ebml.file.name.with.extension", "true"));
@@ -103,6 +106,7 @@ final class Config {
             popupTable = Db.ident(get(p, "db.popup.table", schema + ".popups"), "db.popup.table");
             regionTable = Db.ident(get(p, "db.region.table", schema + ".regions"), "db.region.table");
             reportTable = Db.ident(get(p, "db.report.table", schema + ".jasper_reports"), "db.report.table");
+            processTable = Db.ident(get(p, "db.process.table", schema + ".all_processes"), "db.process.table");
         }
 
         /** "ebml.region" -> [ebml, region] (küçük harf) */

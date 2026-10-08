@@ -403,8 +403,8 @@ final class ExcelReportWriter {
         Sheet s = wb.createSheet("EBML Dosyaları");
         boolean db = cfg.db.enabled;
         List<String> headers = new ArrayList<String>(Arrays.asList("Tür", "Kural", "Proje", "Repo", "Modül",
-                "Paket", "Dosya Adı", "Dosya Yolu", "Aranan Proje Adı"));
-        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(16, 22, 14, 24, 20, 50, 36, 70, 24));
+                "Paket", "Dosya Adı", "Dosya Yolu", "Process Id", "Process Adı", "Aranan Proje Adı"));
+        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(16, 22, 14, 24, 20, 50, 36, 70, 12, 36, 24));
         if (db) {
             headers.addAll(Arrays.asList("DB Proje Id", "Proje Eşleşmesi"));
             widths.addAll(Arrays.asList(12, 20));
@@ -427,6 +427,8 @@ final class ExcelReportWriter {
                 text(x, c++, e.packageName);
                 text(x, c++, e.fileName);
                 text(x, c++, e.file);
+                if (e.processId == null) text(x, c++, ""); else num(x, c++, e.processId.longValue());
+                text(x, c++, e.processName);
                 text(x, c++, e.projectName);
                 if (db) {
                     if (e.projectId == null) text(x, c++, ""); else num(x, c++, e.projectId.longValue());

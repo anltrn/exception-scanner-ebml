@@ -1,6 +1,9 @@
 package com.example.exscan;
 
-/** Taramada bulunan bir ekran (.ebml), region (.ebml) veya Jasper rapor (.dsxml) dosyası. */
+/**
+ * Taramada bulunan bir ekran (.ebml), region (.ebml), Jasper rapor (.dsxml) dosyası
+ * veya process tanımı (process/250001-XXX.par/processdefinition.xml).
+ */
 final class EbmlFile {
 
     enum Kind {
@@ -8,6 +11,7 @@ final class EbmlFile {
         REGION("Region"),
         POPUP("Popup"),
         REPORT("Jasper rapor"),
+        PROCESS("Process"),
         /** Uzantı doğru ama beklenen paketlerin hiçbirinde değil; sadece raporda gösterilir */
         UNCLASSIFIED("Sınıflandırılmadı");
 
@@ -28,6 +32,11 @@ final class EbmlFile {
     String packageName = "";
     String file = "";
     String link;
+
+    /** Process için klasör adındaki numara: 250001-RISM.par -> 250001 */
+    Long processId;
+    /** Process için processdefinition.xml içindeki label değeri */
+    String processName = "";
 
     /** env.project tablosunda aranan proje adı */
     String projectName = "";

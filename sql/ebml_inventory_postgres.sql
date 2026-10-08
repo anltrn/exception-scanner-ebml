@@ -1,5 +1,5 @@
 -- =====================================================================
---  Ekran, region ve Jasper rapor envanteri (PostgreSQL 9.6+)
+--  Ekran, region, Jasper rapor ve process envanteri (PostgreSQL 9.6+)
 --
 --  Mevcut tablo (değiştirilmez, sadece okunur ve FK ile referans verilir):
 --    env.project (id, project_name, ...)
@@ -30,9 +30,10 @@ ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS screen_count integer
 ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS popup_count integer;
 ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS region_count integer;
 ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS report_count integer;
+ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS process_count integer;
 
 -- ---------------------------------------------------------------------
---  Ortak sütunlar (dört tabloda aynı):
+--  Ortak sütunlar (tüm envanter tablolarında aynı):
 --    project_id    : env.project.id; proje bulunamazsa boş
 --    project_name  : env.project tablosunda aranan ana proje adı
 --    project_match : MATCHED | PROJECT_AMBIGUOUS (en küçük id seçildi) | PROJECT_NOT_FOUND
@@ -107,6 +108,23 @@ CREATE TABLE IF NOT EXISTS env.jasper_reports (
     created_at     timestamptz    NOT NULL DEFAULT now()
 );
 
+-- Process'ler: process klasörü altındaki 250001-RISM.par gibi klasörlerdeki processdefinition.xml dosyaları
+CREATE TABLE IF NOT EXISTS env.all_processes (
+    id             bigserial      PRIMARY KEY,
+    scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    project_id     bigint         REFERENCES env.project (id),
+    project_name   varchar(300),
+    project_match  varchar(30)    NOT NULL,
+    repo           varchar(200),
+    module         varchar(300),
+    process_id     bigint         NOT NULL,            -- klasör adındaki numara: 250001-RISM.par -> 250001
+    process_name   varchar(500),                       -- processdefinition.xml içindeki label (Müşteri Değerlendirme)
+    folder_name    varchar(500)   NOT NULL,            -- 250001-RISM.par
+    file_path      varchar(1000)  NOT NULL,
+    link           varchar(2000),
+    created_at     timestamptz    NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS ix_screens_run         ON env.screens (scan_run_id);
 CREATE INDEX IF NOT EXISTS ix_screens_project     ON env.screens (project_id);
 CREATE INDEX IF NOT EXISTS ix_popups_run          ON env.popups (scan_run_id);
@@ -115,6 +133,9 @@ CREATE INDEX IF NOT EXISTS ix_regions_run         ON env.regions (scan_run_id);
 CREATE INDEX IF NOT EXISTS ix_regions_project     ON env.regions (project_id);
 CREATE INDEX IF NOT EXISTS ix_jasper_reports_run     ON env.jasper_reports (scan_run_id);
 CREATE INDEX IF NOT EXISTS ix_jasper_reports_project ON env.jasper_reports (project_id);
+CREATE INDEX IF NOT EXISTS ix_all_processes_run      ON env.all_processes (scan_run_id);
+CREATE INDEX IF NOT EXISTS ix_all_processes_project  ON env.all_processes (project_id);
+CREATE INDEX IF NOT EXISTS ix_all_processes_process  ON env.all_processes (process_id);
 
 -- ---------------------------------------------------------------------
 --  Son taramada proje bazında sayılar
@@ -133,6 +154,8 @@ WITH last_run AS (
     SELECT 'REGION',         project_id, project_name, project_match FROM env.regions        WHERE scan_run_id = (SELECT id FROM last_run)
     UNION ALL
     SELECT 'REPORT',         project_id, project_name, project_match FROM env.jasper_reports WHERE scan_run_id = (SELECT id FROM last_run)
+    UNION ALL
+    SELECT 'PROCESS',        project_id, project_name, project_match FROM env.all_processes  WHERE scan_run_id = (SELECT id FROM last_run)
 )
 SELECT project_id,
        project_name,
@@ -140,7 +163,8 @@ SELECT project_id,
        count(*) FILTER (WHERE kind = 'SCREEN') AS screen_count,
        count(*) FILTER (WHERE kind = 'POPUP')  AS popup_count,
        count(*) FILTER (WHERE kind = 'REGION') AS region_count,
-       count(*) FILTER (WHERE kind = 'REPORT') AS report_count
+       count(*) FILTER (WHERE kind = 'REPORT') AS report_count,
+       count(*) FILTER (WHERE kind = 'PROCESS') AS process_count
   FROM files
  GROUP BY project_id, project_name, project_match;
 
@@ -150,3 +174,10 @@ SELECT project_id,
 --    WHERE s.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE screen_count IS NOT NULL)
 --      AND s.project_id = 42
 --    ORDER BY s.package_name, s.file_name;
+--
+-- Örnek sorgu: bir projenin son taramadaki process'leri
+--   SELECT p.process_id, p.process_name, p.folder_name, p.link
+--     FROM env.all_processes p
+--    WHERE p.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE process_count IS NOT NULL)
+--      AND p.project_id = 42
+--    ORDER BY p.process_id;

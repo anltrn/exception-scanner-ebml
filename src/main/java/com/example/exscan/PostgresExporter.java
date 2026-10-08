@@ -133,6 +133,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
         int popups;
         int regions;
         int reports;
+        int processes;
         int ebmlSkipped;
     }
 
@@ -195,7 +196,8 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
 
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = now(), usage_count = ?"
-                    + (cfg.ebml.enabled ? ", screen_count = ?, popup_count = ?, region_count = ?, report_count = ?" : "")
+                    + (cfg.ebml.enabled ? ", screen_count = ?, popup_count = ?, region_count = ?, report_count = ?,"
+                    + " process_count = ?" : "")
                     + " WHERE id = ?");
             try {
                 int i = 1;
@@ -205,6 +207,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
                     fin.setInt(i++, ir.popups);
                     fin.setInt(i++, ir.regions);
                     fin.setInt(i++, ir.reports);
+                    fin.setInt(i++, ir.processes);
                 }
                 fin.setLong(i, ir.runId);
                 fin.executeUpdate();
@@ -260,7 +263,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
     }
 
     // =====================================================================
-    //  Ekran, region ve Jasper rapor envanteri
+    //  Ekran, region, Jasper rapor ve process envanteri
     // =====================================================================
 
     /** Dosyaların ana proje adını env.project tablosunda arar ve project_id'yi doldurur. */
@@ -329,6 +332,9 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
                 + ", match_rule) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         PreparedStatement reports = con.prepareStatement("INSERT INTO " + eb.reportTable + common
                 + ") VALUES (?,?,?,?,?,?,?,?,?,?)");
+        PreparedStatement processes = con.prepareStatement("INSERT INTO " + eb.processTable
+                + " (scan_run_id, project_id, project_name, project_match, repo, module, process_id, process_name,"
+                + " folder_name, file_path, link) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         try {
             for (RepoResult r : results) {
                 for (EbmlFile f : r.ebmlFiles) {
@@ -338,6 +344,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
                         case POPUP: ps = popups; break;
                         case REGION: ps = regions; break;
                         case REPORT: ps = reports; break;
+                        case PROCESS: ps = processes; break;
                         default: continue; // sınıflandırılmayanlar sadece raporda
                     }
                     if (!eb.insertUnmatched && f.projectId == null) {
@@ -351,6 +358,16 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
                     ps.setString(i++, f.projectMatch.isEmpty() ? EbmlInventory.PROJECT_NOT_FOUND : f.projectMatch);
                     ps.setString(i++, cut(f.repo, 200));
                     ps.setString(i++, cut(f.module, 300));
+                    if (f.kind == EbmlFile.Kind.PROCESS) {
+                        ps.setLong(i++, f.processId.longValue());
+                        ps.setString(i++, f.processName.isEmpty() ? null : cut(f.processName, 500));
+                        ps.setString(i++, cut(f.fileName, 500));
+                        ps.setString(i++, cut(f.file, 1000));
+                        ps.setString(i, cut(f.link, 2000));
+                        ps.addBatch();
+                        ir.processes++;
+                        continue;
+                    }
                     ps.setString(i++, cut(f.packageName, 1000));
                     ps.setString(i++, cut(f.fileName, 500));
                     ps.setString(i++, cut(f.file, 1000));
@@ -367,11 +384,13 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             popups.executeBatch();
             regions.executeBatch();
             reports.executeBatch();
+            processes.executeBatch();
         } finally {
             screens.close();
             popups.close();
             regions.close();
             reports.close();
+            processes.close();
         }
     }
 
