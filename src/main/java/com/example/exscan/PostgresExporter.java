@@ -7,6 +7,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -135,6 +136,8 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
         int reports;
         int processes;
         int ebmlSkipped;
+        /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
+        final List<String> existing = new ArrayList<String>();
     }
 
     InsertResult insert(List<RepoResult> results) throws SQLException {
@@ -193,6 +196,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             }
 
             if (cfg.ebml.enabled) insertEbml(results, ir);
+            if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
 
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = now(), usage_count = ?"
@@ -391,6 +395,241 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             regions.close();
             reports.close();
             processes.close();
+        }
+    }
+
+    // =====================================================================
+    //  Mevcut ekran / popup / rapor / process tablolarında project_id güncellemesi
+    // =====================================================================
+
+    /** Bir hedef tablonun (env.screen page, env.popup, ...) güncelleme sonucu */
+    private static final class Target {
+        final String label;
+        int files;
+        int found;
+        int ambiguous;
+        int updated;
+        String error;
+
+        Target(String label) {
+            this.label = label;
+        }
+
+        public String toString() {
+            if (error != null) return label + ": atlandı (" + error + ")";
+            return label + ": " + files + " dosya, " + found + " tanesi tabloda bulundu, " + updated + " satır güncellendi"
+                    + (files - found - ambiguous > 0 ? ", " + (files - found - ambiguous) + " tanesi tabloda yok" : "")
+                    + (ambiguous > 0 ? ", aynı adı farklı projelerde olan " + ambiguous + " dosya güncellenmedi" : "");
+        }
+    }
+
+    /** Anahtar sütunu ve sırayla denenecek anahtarlar; dosyanın tabloda bulunması için biri yeterli */
+    private interface Keys {
+        List<String> of(EbmlFile f);
+    }
+
+    /**
+     * Taramada bulunan dosyaların project_id değerini mevcut env.screen, env.popup, env.report ve
+     * env.process tablolarına yazar. Her tablo ayrı savepoint'te güncellenir: tablo veya sütun yoksa
+     * sadece o tablo atlanır, tarama kaydı yine yapılır.
+     */
+    private void updateExisting(List<RepoResult> results, InsertResult ir) throws SQLException {
+        Config.Ebml eb = cfg.ebml;
+        List<EbmlFile> screens = new ArrayList<EbmlFile>(), regions = new ArrayList<EbmlFile>(),
+                popups = new ArrayList<EbmlFile>(), reports = new ArrayList<EbmlFile>(), processes = new ArrayList<EbmlFile>();
+        for (RepoResult r : results) {
+            for (EbmlFile f : r.ebmlFiles) {
+                switch (f.kind) {
+                    case SCREEN: screens.add(f); break;
+                    case REGION: regions.add(f); break;
+                    case POPUP: popups.add(f); break;
+                    case REPORT: reports.add(f); break;
+                    case PROCESS: processes.add(f); break;
+                    default: break;
+                }
+            }
+        }
+        Keys fileName = new Keys() {
+            public List<String> of(EbmlFile f) {
+                String n = f.file.substring(f.file.lastIndexOf('/') + 1);
+                List<String> k = new ArrayList<String>();
+                k.add(n);
+                if (n.lastIndexOf('.') > 0) k.add(n.substring(0, n.lastIndexOf('.')));
+                return k;
+            }
+        };
+        Keys processNo = new Keys() {
+            public List<String> of(EbmlFile f) {
+                List<String> k = new ArrayList<String>();
+                k.add(String.valueOf(f.processId));
+                if (!f.processCode.isEmpty()) k.add(f.processCode);
+                return k;
+            }
+        };
+        Keys processName = new Keys() {
+            public List<String> of(EbmlFile f) {
+                List<String> k = new ArrayList<String>();
+                if (!f.processShortName.isEmpty()) {
+                    k.add(f.processShortName);
+                    k.add(f.processShortName + ".par");
+                }
+                return k;
+            }
+        };
+
+        String screenLabel = eb.existingScreenTable + "." + eb.existingScreenNameColumn;
+        ir.existing.add(update(new Target(screenLabel + " (" + eb.existingScreenTypeColumn + "=" + eb.existingScreenTypePage + ")"),
+                screens, eb.existingScreenTable, eb.existingScreenNameColumn, eb.existingScreenTypeColumn,
+                eb.existingScreenTypePage, fileName, null, null).toString());
+        ir.existing.add(update(new Target(screenLabel + " (" + eb.existingScreenTypeColumn + "=" + eb.existingScreenTypeRegion + ")"),
+                regions, eb.existingScreenTable, eb.existingScreenNameColumn, eb.existingScreenTypeColumn,
+                eb.existingScreenTypeRegion, fileName, null, null).toString());
+        ir.existing.add(update(new Target(eb.existingPopupTable + "." + eb.existingPopupNameColumn),
+                popups, eb.existingPopupTable, eb.existingPopupNameColumn, null, null, fileName, null, null).toString());
+        ir.existing.add(update(new Target(eb.existingReportTable + "." + eb.existingReportNameColumn),
+                reports, eb.existingReportTable, eb.existingReportNameColumn, null, null, fileName, null, null).toString());
+        ir.existing.add(update(new Target(eb.existingProcessTable + "." + eb.existingProcessNoColumn + " / "
+                        + eb.existingProcessNameColumn),
+                processes, eb.existingProcessTable, eb.existingProcessNoColumn, null, null, processNo,
+                eb.existingProcessNameColumn, processName).toString());
+    }
+
+    /**
+     * Dosyaları önce keyColumn ile, orada bulunamayanları (varsa) fallbackColumn ile eşleştirip
+     * project_id'yi günceller. Karşılaştırma büyük/küçük harf ve baştaki/sondaki boşluklara duyarsızdır.
+     */
+    private Target update(Target t, List<EbmlFile> all, String table, String keyColumn, String typeColumn, String typeValue,
+                          Keys keys, String fallbackColumn, Keys fallbackKeys) throws SQLException {
+        List<EbmlFile> files = new ArrayList<EbmlFile>();
+        for (EbmlFile f : all) if (f.projectId != null) files.add(f);
+        t.files = files.size();
+        if (files.isEmpty()) return t;
+
+        Savepoint sp = con.setSavepoint();
+        try {
+            if (!exists(table)) {
+                con.releaseSavepoint(sp);
+                t.error = "tablo yok";
+                return t;
+            }
+            java.util.Set<EbmlFile> ambiguous = new java.util.HashSet<EbmlFile>();
+            List<EbmlFile> notFound = match(t, files, table, keyColumn, typeColumn, typeValue, keys, ambiguous);
+            if (fallbackColumn != null && !notFound.isEmpty()) {
+                match(t, notFound, table, fallbackColumn, typeColumn, typeValue, fallbackKeys, ambiguous);
+            }
+            t.ambiguous = ambiguous.size();
+            con.releaseSavepoint(sp);
+        } catch (SQLException e) {
+            con.rollback(sp);
+            String msg = String.valueOf(unwrap(e).getMessage());
+            t.error = msg.split("\\R", 2)[0].trim();
+            t.found = 0;
+            t.updated = 0;
+            t.ambiguous = 0;
+        }
+        return t;
+    }
+
+    /** Eşleştirip günceller; tabloda bulunamayan (ve belirsiz olmayan) dosyaları döndürür. */
+    private List<EbmlFile> match(Target t, List<EbmlFile> files, String table, String column, String typeColumn,
+                                 String typeValue, Keys keys, java.util.Set<EbmlFile> ambiguous) throws SQLException {
+        // Anahtar -> projeler; aynı ad farklı projelerde geçiyorsa hangisi olduğu bilinemez, o ad güncellenmez
+        Map<String, java.util.Set<Long>> byKey = new LinkedHashMap<String, java.util.Set<Long>>();
+        Map<String, String> original = new HashMap<String, String>();
+        for (EbmlFile f : files) {
+            for (String k : keys.of(f)) {
+                String key = k.trim().toLowerCase(Locale.ROOT);
+                if (key.isEmpty()) continue;
+                java.util.Set<Long> p = byKey.get(key);
+                if (p == null) {
+                    p = new java.util.LinkedHashSet<Long>();
+                    byKey.put(key, p);
+                    original.put(key, k.trim());
+                }
+                p.add(f.projectId);
+            }
+        }
+        List<String> ks = new ArrayList<String>();
+        List<Long> pids = new ArrayList<Long>();
+        for (Map.Entry<String, java.util.Set<Long>> en : byKey.entrySet()) {
+            if (en.getValue().size() != 1) continue;
+            ks.add(original.get(en.getKey()));
+            pids.add(en.getValue().iterator().next());
+        }
+        // Her iki tarafta da PostgreSQL lower() kullanılır: Türkçe karakterlerde Java ile farklı sonuç vermesin
+        String cond = " lower(trim(t." + column + "::text)) = lower(v.k)"
+                + (typeColumn == null ? "" : " AND lower(trim(t." + typeColumn + "::text)) = lower(?)");
+        java.util.Set<String> found = new java.util.HashSet<String>();
+        if (!ks.isEmpty()) {
+            PreparedStatement q = con.prepareStatement("SELECT DISTINCT v.k FROM unnest(?::text[]) AS v (k)"
+                    + " WHERE EXISTS (SELECT 1 FROM " + table + " t WHERE" + cond + ")");
+            try {
+                Array arr = con.createArrayOf("text", ks.toArray());
+                q.setArray(1, arr);
+                if (typeColumn != null) q.setString(2, typeValue);
+                ResultSet rs = q.executeQuery();
+                try {
+                    while (rs.next()) found.add(rs.getString(1).trim().toLowerCase(Locale.ROOT));
+                } finally {
+                    rs.close();
+                }
+                arr.free();
+            } finally {
+                q.close();
+            }
+
+            String pc = cfg.ebml.existingProjectColumn;
+            PreparedStatement u = con.prepareStatement("UPDATE " + table + " t SET " + pc + " = v.pid"
+                    + " FROM unnest(?::text[], ?::bigint[]) AS v (k, pid) WHERE" + cond
+                    + (cfg.ebml.updateOnlyEmpty ? " AND t." + pc + " IS NULL" : " AND t." + pc + " IS DISTINCT FROM v.pid"));
+            try {
+                Array ka = con.createArrayOf("text", ks.toArray());
+                Array pa = con.createArrayOf("int8", pids.toArray());
+                u.setArray(1, ka);
+                u.setArray(2, pa);
+                if (typeColumn != null) u.setString(3, typeValue);
+                t.updated += u.executeUpdate();
+                ka.free();
+                pa.free();
+            } finally {
+                u.close();
+            }
+        }
+
+        List<EbmlFile> notFound = new ArrayList<EbmlFile>();
+        for (EbmlFile f : files) {
+            boolean hit = false, amb = false;
+            for (String k : keys.of(f)) {
+                String key = k.trim().toLowerCase(Locale.ROOT);
+                if (found.contains(key)) hit = true;
+                java.util.Set<Long> p = byKey.get(key);
+                if (p != null && p.size() > 1) amb = true;
+            }
+            if (hit) {
+                t.found++;
+                ambiguous.remove(f);
+            } else if (amb) {
+                ambiguous.add(f);
+                notFound.add(f);
+            } else {
+                notFound.add(f);
+            }
+        }
+        return notFound;
+    }
+
+    private boolean exists(String table) throws SQLException {
+        PreparedStatement ps = con.prepareStatement("SELECT to_regclass(?) IS NOT NULL");
+        try {
+            ps.setString(1, table);
+            ResultSet rs = ps.executeQuery();
+            try {
+                return rs.next() && rs.getBoolean(1);
+            } finally {
+                rs.close();
+            }
+        } finally {
+            ps.close();
         }
     }
 

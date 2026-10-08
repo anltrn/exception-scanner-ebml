@@ -280,6 +280,20 @@ Her dosyanın ana proje adı `env.project.project_name` sütununda aranır ve bu
 
 Sonuç `project_match` sütununa yazılır: `MATCHED`, `PROJECT_AMBIGUOUS` (aynı adda birden fazla proje, en küçük id seçildi) veya `PROJECT_NOT_FOUND` (`project_id` boş). Aranan ad her durumda `project_name` sütununda durur. İlk denemede `--db-dry-run` ile çalıştırıp Excel'deki "Proje Eşleşmesi" sütununa bakarak doğru ayarı bulabilirsiniz.
 
+### Mevcut tablolarda project_id güncellemesi
+
+`--ebml --db` ile çalıştırıldığında, taramada projesi bulunan dosyaların `project_id` değeri mevcut tablolara da yazılır:
+
+| Tablo | Eşleştirme |
+|---|---|
+| `env.screen` (`page_type = 'page'`) | Ekranlar: `name` = `EKRAN001.ebml` |
+| `env.screen` (`page_type = 'region'`) | Region'lar: `name` = `RG_Adres.ebml` |
+| `env.popup` | `popup_name` = `pp_deneme` |
+| `env.report` | `report_name` = rapor adı (`.dsxml` uzantılı ve uzantısız denenir) |
+| `env.process` | `no` = klasördeki numara (`250001`) veya `processdefinition.xml` içindeki `name`; bulunamazsa `name` = klasör adında `-` işaretinden sonraki kısım (`RISM`) |
+
+Karşılaştırmalar büyük/küçük harfe ve baştaki/sondaki boşluklara duyarsızdır. Aynı ad farklı projelerde bulunduysa hangi projeye ait olduğu bilinemeyeceği için o kayıt güncellenmez ve konsolda sayısı yazılır. Varsayılan olarak `project_id` değeri farklı olan satırlar güncellenir; `ebml.update.only.empty=true` ile sadece boş olanlar doldurulur. Tablo veya sütun bulunamazsa sadece o tablo atlanır, tarama kaydı yine yapılır. Güncelleme envanter kayıtlarıyla aynı transaction'da yapılır; `--db-dry-run` modunda yapılmaz. Kapatmak için `ebml.update.existing=false`; tablo ve sütun adları `db.existing.*` ayarlarıyla değiştirilebilir.
+
 Her kayıtta dosya adı, paket, repo içindeki yol, Bitbucket'ta dosyayı açan bağlantı (taranan commit'e sabitlenmiş) ve kayıt tarihi (`created_at`) bulunur. Son taramanın proje bazlı sayıları için `env.v_ebml_inventory_latest` görünümü kullanılabilir.
 
 ## Bellek kullanımı

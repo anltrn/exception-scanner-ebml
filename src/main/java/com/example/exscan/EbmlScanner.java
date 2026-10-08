@@ -37,7 +37,7 @@ final class EbmlScanner {
     private static final String DSXML = ".dsxml";
     private static final String PROCESS_DEFINITION = "processdefinition.xml";
     /** 250001-RISM.par -> 250001 */
-    private static final Pattern PAR_DIR = Pattern.compile("(\\d+)(?:[-_].*)?\\.par", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PAR_DIR = Pattern.compile("(\\d+)(?:[-_](.*))?\\.par", Pattern.CASE_INSENSITIVE);
 
     private final Config cfg;
     private final Config.Ebml ebml;
@@ -87,7 +87,9 @@ final class EbmlScanner {
             EbmlFile e = classify(repo, rel, module);
             if (e.kind == EbmlFile.Kind.PROCESS) {
                 try {
-                    e.processName = processLabel(f);
+                    String[] info = processInfo(f);
+                    e.processName = info[0];
+                    e.processCode = info[1];
                     if (e.processName.isEmpty()) {
                         result.errors.add(new ScanError(repo, "PROCESS_LABEL", rel, "label özelliği bulunamadı"));
                     }
@@ -100,10 +102,10 @@ final class EbmlScanner {
     }
 
     /**
-     * processdefinition.xml içindeki process adını okur: kök elemanın label özelliği,
-     * kökte yoksa adında "process" geçen ilk elemanın label özelliği.
+     * processdefinition.xml içindeki process adını (label) ve kodunu (name) okur: kök elemanın
+     * özellikleri, kökte label yoksa adında "process" geçen ilk elemanınkiler. Dönüş: {label, name}
      */
-    static String processLabel(Path file) throws IOException, XMLStreamException {
+    static String[] processInfo(Path file) throws IOException, XMLStreamException {
         XMLInputFactory f = XMLInputFactory.newInstance();
         f.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
         f.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
@@ -116,10 +118,13 @@ final class EbmlScanner {
                     if (r.next() != XMLStreamConstants.START_ELEMENT) continue;
                     String label = r.getAttributeValue(null, "label");
                     boolean processElement = r.getLocalName().toLowerCase(Locale.ROOT).contains("process");
-                    if (label != null && (root || processElement)) return label.trim();
+                    if (label != null && (root || processElement)) {
+                        String name = r.getAttributeValue(null, "name");
+                        return new String[]{label.trim(), name == null ? "" : name.trim()};
+                    }
                     root = false;
                 }
-                return "";
+                return new String[]{"", ""};
             } finally {
                 r.close();
             }
@@ -163,6 +168,7 @@ final class EbmlScanner {
                 e.kind = EbmlFile.Kind.PROCESS;
                 e.rule = "PAR";
                 e.processId = Long.valueOf(m.group(1));
+                e.processShortName = m.group(2) == null ? "" : m.group(2);
                 e.fileName = parDir;
                 e.packageName = "";
             } else {

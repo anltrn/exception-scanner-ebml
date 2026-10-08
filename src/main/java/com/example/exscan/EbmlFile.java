@@ -37,6 +37,10 @@ final class EbmlFile {
     Long processId;
     /** Process için processdefinition.xml içindeki label değeri */
     String processName = "";
+    /** Process için processdefinition.xml içindeki name değeri (env.process.no ile eşleştirilir) */
+    String processCode = "";
+    /** Process için klasör adında '-' işaretinden sonraki kısım: 250001-RISM.par -> RISM (env.process.name) */
+    String processShortName = "";
 
     /** env.project tablosunda aranan proje adı */
     String projectName = "";

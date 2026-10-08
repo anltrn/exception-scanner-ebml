@@ -265,6 +265,7 @@ public final class ScannerApp {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0
                                 ? ", projesi bulunamayan " + ir.ebmlSkipped + " dosya atlandı" : "") + ".");
+                        for (String line : ir.existing) log("project_id güncellemesi: " + line);
                     }
                 }
             } catch (Exception e) {
