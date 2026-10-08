@@ -244,19 +244,19 @@ Her desenin `pattern.N.type` (çağrılarda `call.N.type`) değeri `usage_type_c
 
 | Tablo | Dosyalar |
 |---|---|
-| `env.screens` | `ebml.page` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
-| `env.popups` | `ebml.popup` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
-| `env.regions` | Adı `RG_` ile başlayan **veya** `ebml.region` paketi altındaki `.ebml` dosyaları |
-| `env.jasper_reports` | `ebml.report` paketi (ve alt paketleri) altındaki `.dsxml` dosyaları |
+| `env.all_screens` | `ebml.page` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
+| `env.all_popups` | `ebml.popup` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
+| `env.all_regions` | Adı `RG_` ile başlayan **veya** `ebml.region` paketi altındaki `.ebml` dosyaları |
+| `env.all_reports` | `ebml.report` paketi (ve alt paketleri) altındaki `.dsxml` dosyaları |
 | `env.all_processes` | `process` klasörü altındaki `250001-RISM.par` gibi klasörlerde bulunan `processdefinition.xml` dosyaları |
 
-Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
+Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `all_regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
 
 Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>-<ad>.par` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır.
 
 ### Kurulum ve çalıştırma
 
-`sql/ebml_inventory_postgres.sql` dosyasını bir kez çalıştırın. Tek başına da çalışır; exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşır ve ona ekran, popup, region, rapor ve process sayısı sütunlarını ekler. Daha önce çalıştırdıysanız `env.all_processes` tablosu ve `process_count` sütunu için dosyayı yeniden çalıştırın (mevcut tablolara dokunmaz).
+`sql/ebml_inventory_postgres.sql` dosyasını bir kez çalıştırın. Tek başına da çalışır; exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşır ve ona ekran, popup, region, rapor ve process sayısı sütunlarını ekler. Daha önce çalıştırdıysanız `env.all_processes` tablosu ve `process_count` sütunu için dosyayı yeniden çalıştırın (mevcut tablolara dokunmaz). Eski adlarla oluşturulmuş tablolar (`env.screens`, `env.popups`, `env.regions`, `env.jasper_reports`) varsa bu dosya onları verileriyle birlikte yeni adlarına (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`) taşır.
 
 ```bash
 # Sadece ekran/rapor envanteri

@@ -102,10 +102,10 @@ final class Config {
             projectTable = Db.ident(get(p, "db.project.table", schema + ".project"), "db.project.table");
             projectIdColumn = Db.ident(get(p, "db.project.id.column", "id"), "db.project.id.column");
             projectNameColumn = Db.ident(get(p, "db.project.name.column", "project_name"), "db.project.name.column");
-            screenTable = Db.ident(get(p, "db.screen.table", schema + ".screens"), "db.screen.table");
-            popupTable = Db.ident(get(p, "db.popup.table", schema + ".popups"), "db.popup.table");
-            regionTable = Db.ident(get(p, "db.region.table", schema + ".regions"), "db.region.table");
-            reportTable = Db.ident(get(p, "db.report.table", schema + ".jasper_reports"), "db.report.table");
+            screenTable = Db.ident(get(p, "db.screen.table", schema + ".all_screens"), "db.screen.table");
+            popupTable = Db.ident(get(p, "db.popup.table", schema + ".all_popups"), "db.popup.table");
+            regionTable = Db.ident(get(p, "db.region.table", schema + ".all_regions"), "db.region.table");
+            reportTable = Db.ident(get(p, "db.report.table", schema + ".all_reports"), "db.report.table");
             processTable = Db.ident(get(p, "db.process.table", schema + ".all_processes"), "db.process.table");
         }
 
