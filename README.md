@@ -312,6 +312,14 @@ Tarayıcı komut satırı yerine bir web servisi olarak da çalışabilir. Taram
 java -jar target/exception-scanner-1.0.0.jar --server
 ```
 
+Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:8080/swagger-ui.html` adresini açar:
+
+- IDE'de `ScanServerApplication` sınıfını çalıştırın (IntelliJ: sınıfın yanındaki ▶ veya Spring Boot çalıştırma ayarı). `ScannerApp` sınıfını parametresiz çalıştırırsanız sunucu değil komut satırı taraması başlar.
+- `mvn spring-boot:run`
+- `java -jar target/exception-scanner-1.0.0.jar --server`
+
+Çalışma klasöründeki `scanner.properties` temel ayar olarak okunur. Bitbucket token'ı için `BITBUCKET_TOKEN` ortam değişkenini verin. Port doluysa `PORT=8081` ile değiştirin.
+
 | Adres | Açıklama |
 |---|---|
 | `/swagger-ui.html` (veya `/`) | Swagger arayüzü |

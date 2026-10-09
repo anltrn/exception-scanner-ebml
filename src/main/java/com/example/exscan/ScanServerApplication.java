@@ -35,6 +35,11 @@ import java.util.List;
         description = "SCANNER_API_KEY tanımlıysa gerekli; tanımlı değilse boş bırakılabilir")
 public class ScanServerApplication {
 
+    /** IDE'den (Run 'ScanServerApplication') doğrudan sunucu olarak başlatmak için */
+    public static void main(String[] args) {
+        start(args);
+    }
+
     static void start(String[] args) {
         ExtraCaBundle.installFromEnv(); // SSL ilk kullanılmadan önce
         // "--server" Spring'e geçerse "server" önekli ayarlarla karışır
