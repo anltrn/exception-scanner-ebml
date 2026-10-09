@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exception-scanner
+  annotations:
+    # ImageStream'e yeni imaj gelince otomatik yeniden dagit
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"exception-scanner:latest"},
+        "fieldPath":"spec.template.spec.containers[?(@.name==\"scanner\")].image"}]
+spec:
+  # Tarama gecmisi pod icinde tutuldugu ve disk RWO oldugu icin tek pod
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: exception-scanner
+  template:
+    metadata:
+      labels:
+        app: exception-scanner
+    spec:
+      containers:
+        - name: scanner
+          image: exception-scanner:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SCANNER_CONFIG
+              value: /app/config/scanner.properties
+            - name: SCANNER_WORK_DIR
+              value: /data/work
+            - name: SCANNER_OUTPUT_DIR
+              value: /data/reports
+            # Sirket CA sertifikasi (PEM) icin: asagidaki ca-bundle volume'unu acip bu degeri verin
+            # - name: EXTRA_CA_BUNDLE
+            #   value: /etc/pki/extra/ca-bundle.crt
+          # BITBUCKET_USERNAME, BITBUCKET_TOKEN, DB_USER, DB_PASSWORD, SCANNER_API_KEY
+          envFrom:
+            - secretRef:
+                name: exception-scanner-secrets
+                optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            # - name: ca-bundle
+            #   mountPath: /etc/pki/extra
+            #   readOnly: true
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: config
+          configMap:
+            name: exception-scanner-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: exception-scanner-data
+        # Kumenin guvenilen CA paketi: bos bir ConfigMap olusturup
+        #   oc label configmap trusted-ca config.openshift.io/inject-trusted-cabundle=true
+        # ile etiketlerseniz OpenShift icine ca-bundle.crt ekler.
+        # - name: ca-bundle
+        #   configMap:
+        #     name: trusted-ca
+        #     items:
+        #       - key: ca-bundle.crt
+        #         path: ca-bundle.crt
+      terminationGracePeriodSeconds: 30

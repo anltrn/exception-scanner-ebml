@@ -1,3 +1,5 @@
 target/
 scannedRepos/
 executeReports/
+.git/
+**/.DS_Store

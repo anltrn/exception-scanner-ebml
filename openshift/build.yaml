@@ -1,0 +1,36 @@
+# Imaji OpenShift icinde derler (Docker stratejisi, kaynak yerel klasorden yuklenir):
+#   oc start-build exception-scanner --from-dir=. --follow
+# Disaridan hazir imaj kullanilacaksa bu dosyayi kustomization.yaml'dan cikarip
+# deployment.yaml'daki image alanini registry adresiyle degistirin.
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: exception-scanner
+spec:
+  lookupPolicy:
+    local: true
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: exception-scanner
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      # Sirket ici registry/Maven mirror kullaniliyorsa:
+      # buildArgs:
+      #   - name: BUILD_IMAGE
+      #     value: registry.sirket/maven:3.9-eclipse-temurin-17
+      #   - name: RUNTIME_IMAGE
+      #     value: registry.sirket/ubi9/openjdk-17-runtime:1.20
+  output:
+    to:
+      kind: ImageStreamTag
+      name: exception-scanner:latest
+  resources:
+    limits:
+      memory: 2Gi
