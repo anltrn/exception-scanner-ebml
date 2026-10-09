@@ -280,6 +280,14 @@ Her dosyanın ana proje adı `env.project.project_name` sütununda aranır ve bu
 
 Sonuç `project_match` sütununa yazılır: `MATCHED`, `PROJECT_AMBIGUOUS` (aynı adda birden fazla proje, en küçük id seçildi) veya `PROJECT_NOT_FOUND` (`project_id` boş). Aranan ad her durumda `project_name` sütununda durur. İlk denemede `--db-dry-run` ile çalıştırıp Excel'deki "Proje Eşleşmesi" sütununa bakarak doğru ayarı bulabilirsiniz.
 
+### Excel raporundaki sayılar
+
+`--ebml` ile üretilen Excel raporunda:
+
+- **Özet** sayfasında ekran, popup, region, Jasper rapor ve process sayılarının toplamı ile tür bazında dağılımı bulunur. Repo tablosunda her repo için bu beş sayı ayrı sütunlarda yer alır.
+- **Proje Envanteri** sayfasında her proje için ekran, popup, region, rapor, process ve toplam sayıları listelenir, en altta genel toplam satırı vardır. Veritabanı açıksa (`--db`) projeler `env.project` kaydına göre gruplanır ve "DB Proje Id" ile "Proje Eşleşmesi" sütunları da gösterilir; kapalıysa aranan proje adına göre gruplanır. Sadece envanter çıkarıldığında (`--class` verilmeden) rapor bu sayfayla açılır.
+- **EBML Dosyaları** sayfasında dosya bazında detaylar bulunur.
+
 ### Mevcut tablolarda project_id güncellemesi
 
 `--ebml --db` ile çalıştırıldığında, taramada projesi bulunan dosyaların `project_id` değeri mevcut tablolara da yazılır:
