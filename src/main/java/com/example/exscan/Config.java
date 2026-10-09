@@ -47,6 +47,8 @@ final class Config {
     final Set<String> excludeDirs;
     final Charset fallbackCharset;
     final int threads;
+    final int gitThreads;
+    final boolean gitSparse;
     final boolean perProjectReports;
     final List<UsagePattern> patterns;
     final List<CallPattern> callPatterns;
@@ -241,6 +243,8 @@ final class Config {
                 "target,build,bin,out,classes,node_modules,generated,generated-sources")));
         fallbackCharset = Charset.forName(get(p, "scan.fallback.charset", "windows-1254"));
         threads = Math.max(1, Integer.parseInt(get(p, "threads", "4")));
+        gitThreads = Math.max(1, Integer.parseInt(get(p, "git.threads", "8")));
+        gitSparse = Boolean.parseBoolean(get(p, "git.sparse", "true"));
         perProjectReports = Boolean.parseBoolean(get(p, "report.per.project", "true"));
         patterns = UsagePattern.load(p);
         callPatterns = CallPattern.load(p);

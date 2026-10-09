@@ -75,6 +75,10 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.example.exscan.ScannerApp</mainClass>
+                    <!-- mvn spring-boot:run sunucu modunda (Swagger) açılsın; jar'ın kendisini etkilemez -->
+                    <arguments>
+                        <argument>--server</argument>
+                    </arguments>
                 </configuration>
             </plugin>
         </plugins>

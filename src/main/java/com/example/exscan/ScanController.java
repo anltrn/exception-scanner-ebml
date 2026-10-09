@@ -33,9 +33,11 @@ import java.util.Map;
 class ScanController {
 
     private final ScanJobService service;
+    private final ScheduledScan schedule;
 
-    ScanController(ScanJobService service) {
+    ScanController(ScanJobService service, ScheduledScan schedule) {
         this.service = service;
+        this.schedule = schedule;
     }
 
     @Hidden
@@ -51,7 +53,7 @@ class ScanController {
     @ApiResponse(responseCode = "202", description = "Sıraya alındı")
     @ApiResponse(responseCode = "400", description = "Ayar veya parametre hatası")
     ResponseEntity<ScanJob> start(@RequestBody(required = false) ScanRequest request) throws IOException {
-        ScanJob job = service.submit(request);
+        ScanJob job = service.submit(request, ScanJob.Trigger.API);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .location(java.net.URI.create("/api/scans/" + job.id))
                 .body(job);
@@ -118,6 +120,14 @@ class ScanController {
             description = "İstekte verilmeyen değerler için kullanılan scanner.properties. Token ve şifreler maskelenir.")
     Map<String, String> settings() throws IOException {
         return service.effectiveSettings();
+    }
+
+    @GetMapping("/api/schedule")
+    @Operation(summary = "Otomatik tarama zamanı",
+            description = "Haftalık otomatik taramanın cron ifadesi ve bir sonraki çalışma zamanı. "
+                    + "SCANNER_SCHEDULE_CRON ile değiştirilir, \"-\" ile kapatılır.")
+    ScheduledScan.Info schedule() {
+        return schedule.info();
     }
 
     private static ResponseEntity<Resource> send(Path f) {

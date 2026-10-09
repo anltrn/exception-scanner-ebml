@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,18 +20,25 @@ import java.util.List;
  */
 @SpringBootApplication
 @EnableConfigurationProperties(ServerSettings.class)
+@EnableScheduling
 @OpenAPIDefinition(
         info = @Info(title = "Exception Kullanım Tarayıcı",
                 version = "1.0.0",
                 description = "Bitbucket, git adresi veya yerel klasördeki Java kodunda exception ve metot çağrısı "
                         + "kullanımlarını tarar; Excel/CSV raporu üretir. Taramalar sırayla, arka planda çalışır: "
                         + "POST /api/scans ile başlatın, GET /api/scans/{id} ile durumu izleyin, raporu "
-                        + "GET /api/scans/{id}/report ile indirin."),
+                        + "GET /api/scans/{id}/report ile indirin. Ayrıca haftada bir sunucudaki ayarlarla "
+                        + "otomatik tarama yapılır (GET /api/schedule)."),
         security = @SecurityRequirement(name = "apiKey"))
 @SecurityScheme(name = "apiKey", type = SecuritySchemeType.APIKEY, in = SecuritySchemeIn.HEADER,
         paramName = ApiKeyFilter.HEADER,
         description = "SCANNER_API_KEY tanımlıysa gerekli; tanımlı değilse boş bırakılabilir")
 public class ScanServerApplication {
+
+    /** IDE'den (Run 'ScanServerApplication') doğrudan sunucu olarak başlatmak için */
+    public static void main(String[] args) {
+        start(args);
+    }
 
     static void start(String[] args) {
         ExtraCaBundle.installFromEnv(); // SSL ilk kullanılmadan önce

@@ -20,6 +20,10 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /** Bitbucket Server/Data Center (REST 1.0) ve Bitbucket Cloud (REST 2.0) üzerinden repo listesini alır. */
 final class BitbucketClient {
@@ -44,19 +48,42 @@ final class BitbucketClient {
                 keys.add(p.path("key").asText());
             }
         }
+        // Projelerin repo listeleri paralel çekilir; sonuç proje sırasıyla birleştirilir
+        ExecutorService pool = Executors.newFixedThreadPool(Math.max(1, Math.min(keys.size(), 8)));
+        try {
+            List<Future<List<RepoInfo>>> futures = new ArrayList<Future<List<RepoInfo>>>();
+            for (final String key : keys) futures.add(pool.submit(() -> listServerProject(key)));
+            List<RepoInfo> repos = new ArrayList<RepoInfo>();
+            for (Future<List<RepoInfo>> f : futures) {
+                try {
+                    repos.addAll(f.get());
+                } catch (ExecutionException e) {
+                    Throwable c = e.getCause();
+                    if (c instanceof IOException) throw (IOException) c;
+                    throw new IOException(String.valueOf(c), c);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("Repo listesi alınırken kesildi", e);
+                }
+            }
+            return repos;
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private List<RepoInfo> listServerProject(String key) throws IOException {
         String linkName = "ssh".equals(cfg.cloneProtocol) ? "ssh" : "http";
         List<RepoInfo> repos = new ArrayList<RepoInfo>();
-        for (String key : keys) {
-            for (JsonNode r : pagedServer("/rest/api/1.0/projects/" + RepoInfo.urlEncode(key) + "/repos")) {
-                if (!cfg.includeArchived && r.path("archived").asBoolean(false)) continue;
-                repos.add(new RepoInfo(Config.Source.SERVER,
-                        r.path("project").path("key").asText(key),
-                        r.path("project").path("name").asText(key),
-                        r.path("slug").asText(),
-                        r.path("name").asText(),
-                        cloneLink(r.path("links").path("clone"), linkName),
-                        firstHref(r.path("links").path("self"))));
-            }
+        for (JsonNode r : pagedServer("/rest/api/1.0/projects/" + RepoInfo.urlEncode(key) + "/repos")) {
+            if (!cfg.includeArchived && r.path("archived").asBoolean(false)) continue;
+            repos.add(new RepoInfo(Config.Source.SERVER,
+                    r.path("project").path("key").asText(key),
+                    r.path("project").path("name").asText(key),
+                    r.path("slug").asText(),
+                    r.path("name").asText(),
+                    cloneLink(r.path("links").path("clone"), linkName),
+                    firstHref(r.path("links").path("self"))));
         }
         return repos;
     }

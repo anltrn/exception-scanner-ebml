@@ -11,9 +11,13 @@ public class ScanJob {
 
     public enum Status { QUEUED, RUNNING, SUCCEEDED, FAILED }
 
+    public enum Trigger { API, SCHEDULE }
+
     @Schema(description = "Tarama numarası", example = "20261009-142233-a1b2")
     public String id;
     public Status status;
+    @Schema(description = "API: Swagger / REST ile başlatıldı, SCHEDULE: haftalık otomatik tarama")
+    public Trigger trigger;
     public Instant createdAt;
     public Instant startedAt;
     public Instant finishedAt;
