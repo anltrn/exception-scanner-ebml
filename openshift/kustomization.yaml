@@ -1,0 +1,23 @@
+# Kurulum:  oc project <namespace> && oc apply -k openshift/
+# Ayrintilar icin README'deki "OpenShift" bolumune bakin.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: exception-scanner
+      app.kubernetes.io/part-of: exception-scanner
+    includeSelectors: false
+
+resources:
+  - build.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - route.yaml
+
+# scanner.properties degisince ConfigMap adi degisir ve pod otomatik yeniden baslar
+configMapGenerator:
+  - name: exception-scanner-config
+    files:
+      - scanner.properties

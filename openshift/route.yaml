@@ -1,0 +1,17 @@
+# Swagger: https://<route-adresi>/swagger-ui.html
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: exception-scanner
+  annotations:
+    # Buyuk Excel raporlarinin indirilmesi kesilmesin
+    haproxy.router.openshift.io/timeout: 5m
+spec:
+  to:
+    kind: Service
+    name: exception-scanner
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

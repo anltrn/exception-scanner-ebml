@@ -6,7 +6,7 @@ Tarama metin araması değil, Java kaynak kodunu gerçekten ayrıştırarak (Jav
 
 ## Gereksinimler
 
-Tarayıcıyı çalıştıracak makinede JDK 8 veya üstü ve derleme için Maven olmalıdır. Bitbucket veya git adresinden tarama yapılacaksa PATH'te Git 2.31 veya üstü de gerekir; yerel klasör taramasında git gerekmez. Taranan kodun Java 6 olması sorun değildir. Tarayıcı Bitbucket'ta hiçbir şeyi değiştirmez; sadece okuma yetkisi yeterlidir.
+Tarayıcıyı çalıştıracak makinede JDK 17 veya üstü ve derleme için Maven olmalıdır. Bitbucket veya git adresinden tarama yapılacaksa PATH'te Git 2.31 veya üstü de gerekir; yerel klasör taramasında git gerekmez. Taranan kodun Java 6 olması sorun değildir. Tarayıcı Bitbucket'ta hiçbir şeyi değiştirmez; sadece okuma yetkisi yeterlidir.
 
 ## Derleme
 
@@ -14,7 +14,7 @@ Tarayıcıyı çalıştıracak makinede JDK 8 veya üstü ve derleme için Maven
 mvn -q package
 ```
 
-Çıktı: `target/exception-scanner-1.0.0.jar` (tüm bağımlılıklar içinde).
+Çıktı: `target/exception-scanner-1.0.0.jar` (tüm bağımlılıklar içinde). Aynı jar komut satırı aracı olarak veya `--server` ile REST API olarak çalışır (bkz. [REST API ve Swagger](#rest-api-ve-swagger)).
 
 ## Ayarlar
 
@@ -302,6 +302,94 @@ Sonuç `project_match` sütununa yazılır: `MATCHED`, `PROJECT_AMBIGUOUS` (ayn�
 Karşılaştırmalar büyük/küçük harfe ve baştaki/sondaki boşluklara duyarsızdır. Aynı ad farklı projelerde bulunduysa hangi projeye ait olduğu bilinemeyeceği için o kayıt güncellenmez ve konsolda sayısı yazılır. Varsayılan olarak `project_id` değeri farklı olan satırlar güncellenir; `ebml.update.only.empty=true` ile sadece boş olanlar doldurulur. Tablo veya sütun bulunamazsa sadece o tablo atlanır, tarama kaydı yine yapılır. Güncelleme envanter kayıtlarıyla aynı transaction'da yapılır; `--db-dry-run` modunda yapılmaz. Kapatmak için `ebml.update.existing=false`; tablo ve sütun adları `db.existing.*` ayarlarıyla değiştirilebilir.
 
 Her kayıtta dosya adı, paket, repo içindeki yol, Bitbucket'ta dosyayı açan bağlantı (taranan commit'e sabitlenmiş) ve kayıt tarihi (`created_at`) bulunur. Son taramanın proje bazlı sayıları için `env.v_ebml_inventory_latest` görünümü kullanılabilir.
+
+## REST API ve Swagger
+
+Tarayıcı komut satırı yerine bir web servisi olarak da çalışabilir. Taramalar tarayıcıdan, Swagger arayüzüyle başlatılır ve raporlar oradan indirilir:
+
+```bash
+java -jar target/exception-scanner-1.0.0.jar --server
+```
+
+| Adres | Açıklama |
+|---|---|
+| `/swagger-ui.html` (veya `/`) | Swagger arayüzü |
+| `/v3/api-docs` | OpenAPI dokümanı |
+| `POST /api/scans` | Tarama başlatır, hemen tarama numarasıyla döner (202) |
+| `GET /api/scans`, `GET /api/scans/{id}` | Taramalar ve durumu: `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` |
+| `GET /api/scans/{id}/log` | Tarama logu (sürerken de okunabilir, `?tail=50`) |
+| `GET /api/scans/{id}/report` | Ana Excel raporu |
+| `GET /api/scans/{id}/files`, `.../files/download?path=...` | CSV ve proje bazlı raporlar |
+| `DELETE /api/scans/{id}` | Sıradaki taramayı iptal eder veya biten taramayı raporlarıyla siler |
+| `GET /api/settings` | Sunucudaki temel ayarlar (token ve şifreler maskeli) |
+| `/actuator/health/liveness`, `/actuator/health/readiness` | Sağlık kontrolleri |
+
+İstek gövdesi komut satırı parametrelerinin karşılığıdır. Boş bırakılan alanlarda sunucudaki ayar dosyası geçerlidir; `{}` ile gönderilirse doğrudan ayar dosyasındaki değerlerle taranır:
+
+```json
+{
+  "projects": ["PRJ"],
+  "excludeRepos": ["z_atil_*", "nova-*"],
+  "branch": "develop",
+  "classes": ["com.firma.framework.CustomException"],
+  "patterns": ["0,STRING", "0,STRING,*"],
+  "properties": { "git.timeout.minutes": "30" }
+}
+```
+
+Taramalar sırayla çalışır (aynı anda tek tarama); sonradan gelenler sırada bekler. Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
+
+Sunucu ayarları ortam değişkenleriyle verilir:
+
+| Değişken | Varsayılan | Açıklama |
+|---|---|---|
+| `PORT` | `8080` | |
+| `SCANNER_CONFIG` | `scanner.properties` | Temel ayar dosyası |
+| `SCANNER_WORK_DIR` | `./scannedRepos` | Klonların tutulduğu klasör |
+| `SCANNER_OUTPUT_DIR` | `./executeReports` | Raporların yazıldığı klasör |
+| `SCANNER_API_KEY` | boş | Doluysa `/api` istekleri `X-API-Key` başlığını ister (Swagger'da **Authorize**) |
+| `EXTRA_CA_BUNDLE` | boş | Şirket CA sertifikaları (PEM); Java'ya ve git'e eklenir |
+| `BITBUCKET_USERNAME`, `BITBUCKET_TOKEN`, `DB_USER`, `DB_PASSWORD` | | Komut satırındaki gibi |
+
+## OpenShift
+
+`Dockerfile` ve `openshift/` klasörü OpenShift'te çalıştırmak için hazırdır. İmaj Red Hat UBI 9 OpenJDK 17 üzerine kurulur, içinde git vardır ve OpenShift'in rastgele kullanıcı ID'siyle çalışır.
+
+```bash
+oc project <namespace>
+
+# 1. Gizli değerler (depoya eklemeyin; örnek: openshift/secret.example.yaml)
+oc create secret generic exception-scanner-secrets \
+  --from-literal=BITBUCKET_TOKEN=<token> \
+  --from-literal=SCANNER_API_KEY=<rastgele-uzun-değer>
+
+# 2. Ayarlar: openshift/scanner.properties dosyasında bitbucket.url vb. düzenleyin, sonra
+oc apply -k openshift/
+
+# 3. İmajı OpenShift içinde derleyin (Docker stratejisi; yeni imaj gelince pod kendiliğinden yenilenir)
+oc start-build exception-scanner --from-dir=. --follow
+
+# 4. Swagger adresi
+echo "https://$(oc get route exception-scanner -o jsonpath='{.spec.host}')/swagger-ui.html"
+```
+
+Oluşan kaynaklar:
+
+| Dosya | İçerik |
+|---|---|
+| `build.yaml` | ImageStream ve BuildConfig |
+| `deployment.yaml` | Tek pod, sağlık kontrolleri, 1–3 GiB bellek, root olmayan güvenlik ayarları |
+| `pvc.yaml` | 20 GiB disk: klonlar (`/data/work`) ve raporlar (`/data/reports`) |
+| `service.yaml`, `route.yaml` | HTTPS (edge) Route, büyük rapor indirmeleri için 5 dakika zaman aşımı |
+| `scanner.properties` | `exception-scanner-config` ConfigMap'i; değişince pod yeniden başlar |
+
+Notlar:
+
+- **Şirket içi registry / Maven mirror:** İmajlar `BUILD_IMAGE` ve `RUNTIME_IMAGE` build argümanlarıyla değiştirilebilir (`build.yaml` içinde örnek var).
+- **Şirket CA sertifikası:** Bitbucket'ın sertifikası tanınmıyorsa boş bir ConfigMap oluşturup `oc label configmap trusted-ca config.openshift.io/inject-trusted-cabundle=true` ile etiketleyin. Ardından `deployment.yaml` içindeki `ca-bundle` satırlarını ve `EXTRA_CA_BUNDLE` değişkenini açın. Kendi PEM dosyanızı da ConfigMap olarak bağlayabilirsiniz.
+- **Bellek:** Heap, konteyner limitinin %75'i olarak ayarlanır (`MAX_RAM_PERCENTAGE`). Çok büyük repolarda limiti artırın veya `threads` değerini düşürün.
+- **Tek pod:** Tarama geçmişi pod'da tutulduğu ve disk ReadWriteOnce olduğu için `replicas: 1` ve `Recreate` stratejisi kullanılır.
+- **Erişim:** Route dışarı açıksa `SCANNER_API_KEY` mutlaka tanımlanmalı; Swagger ve sağlık kontrolleri anahtarsız açılır, `/api` istekleri anahtar ister.
 
 ## Bellek kullanımı
 

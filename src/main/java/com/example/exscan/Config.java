@@ -261,11 +261,7 @@ final class Config {
     static Config load(Path file, Properties overrides) throws IOException {
         Properties p = new Properties();
         if (file != null && Files.exists(file)) {
-            try (Reader r = new StringReader(readText(file))) {
-                p.load(r);
-            } catch (IllegalArgumentException e) {
-                throw new IOException("Ayar dosyası okunamadı (" + file.toAbsolutePath() + "): " + e.getMessage(), e);
-            }
+            p = readProperties(file);
         } else if (overrides.isEmpty()) {
             throw new IOException("Ayar dosyası bulunamadı: "
                     + (file == null ? "scanner.properties" : file.toAbsolutePath().toString())
@@ -282,6 +278,17 @@ final class Config {
         }
         p.putAll(overrides);
         return new Config(p);
+    }
+
+    /** Ayar dosyasını Properties olarak okur (kodlama tespitiyle). */
+    static Properties readProperties(Path file) throws IOException {
+        Properties p = new Properties();
+        try (Reader r = new StringReader(readText(file))) {
+            p.load(r);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("Ayar dosyası okunamadı (" + file.toAbsolutePath() + "): " + e.getMessage(), e);
+        }
+        return p;
     }
 
     /**

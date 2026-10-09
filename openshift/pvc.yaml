@@ -1,0 +1,12 @@
+# Klonlanan repolar (/data/work, taramalar arasinda onbellek) ve raporlar (/data/reports).
+# Repo sayisina gore buyutun; klonlar --depth 1 oldugu icin repo basina genelde birkac MB-yuz MB.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: exception-scanner-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi

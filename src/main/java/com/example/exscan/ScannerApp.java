@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * kullanımlarını Excel raporu olarak çıkarır.
  *
  * Kullanım: java -jar exception-scanner-1.0.0.jar [scanner.properties] [parametreler]
- * Parametre listesi için: --help
+ * Parametre listesi için: --help. REST API + Swagger arayüzüyle çalıştırmak için: --server
  */
 public final class ScannerApp {
 
@@ -62,6 +62,7 @@ public final class ScannerApp {
             "  --out <klasör>       Raporların yazılacağı klasör",
             "  --threads <n>        Aynı anda taranacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
             "  --console-limit <n>  Konsola yazılacak en fazla kullanım sayısı (varsayılan 200, 0 = yazma)",
+            "  --server             Komut satırı yerine REST API + Swagger arayüzü olarak çalış (port: PORT, varsayılan 8080)",
             "  --help               Bu yardımı göster",
             "",
             "Örnekler:",
@@ -70,8 +71,41 @@ public final class ScannerApp {
             "  java -jar exception-scanner-1.0.0.jar --git https://github.com/sahip/repo \\",
             "       --class com.firma.framework.CustomException --pattern 0,STRING,*");
 
+    /** Komut satırı parametrelerinin ayrıştırılmış hali */
+    static final class Args {
+        final Properties overrides = new Properties();
+        String cfgFile;
+        boolean help;
+    }
+
     private static void run(String[] args) throws Exception {
-        Properties overrides = new Properties();
+        for (String a : args) {
+            if ("--server".equals(a)) {
+                ScanServerApplication.start(args);
+                return;
+            }
+        }
+        Args parsed = parseArgs(args);
+        if (parsed.help) {
+            System.out.println(USAGE);
+            return;
+        }
+        Path cfgPath = Paths.get(parsed.cfgFile != null ? parsed.cfgFile : "scanner.properties");
+        if (parsed.cfgFile != null && !java.nio.file.Files.exists(cfgPath)) {
+            throw new java.io.IOException("Ayar dosyası bulunamadı: " + cfgPath.toAbsolutePath());
+        }
+        if (java.nio.file.Files.exists(cfgPath)) log("Ayar dosyası: " + cfgPath.toAbsolutePath());
+        Config cfg = Config.load(cfgPath, parsed.overrides);
+        scan(cfg, cfg.outputDir.resolve(new SimpleDateFormat("yyyyMMdd_HHmm").format(new Date())));
+    }
+
+    /**
+     * Komut satırı parametrelerini ayar değerlerine çevirir. Sunucu modu da tarama isteklerini
+     * aynı parametrelere çevirip buradan geçirir.
+     */
+    static Args parseArgs(String[] args) {
+        Args parsed = new Args();
+        Properties overrides = parsed.overrides;
         String cfgFile = null;
         List<String> classes = new ArrayList<String>();
         List<String> gitUrls = new ArrayList<String>();
@@ -82,8 +116,8 @@ public final class ScannerApp {
             switch (a) {
                 case "-h":
                 case "--help":
-                    System.out.println(USAGE);
-                    return;
+                    parsed.help = true;
+                    return parsed;
                 case "--local":
                     overrides.setProperty("source", "local");
                     overrides.setProperty("local.dir", value(args, ++i, a));
@@ -164,13 +198,17 @@ public final class ScannerApp {
         }
         if (!classes.isEmpty()) overrides.setProperty("exception.classes", String.join(",", classes));
         if (!gitUrls.isEmpty()) overrides.setProperty("git.urls", String.join(",", gitUrls));
+        parsed.cfgFile = cfgFile;
+        return parsed;
+    }
 
-        Path cfgPath = Paths.get(cfgFile != null ? cfgFile : "scanner.properties");
-        if (cfgFile != null && !java.nio.file.Files.exists(cfgPath)) {
-            throw new java.io.IOException("Ayar dosyası bulunamadı: " + cfgPath.toAbsolutePath());
-        }
-        if (java.nio.file.Files.exists(cfgPath)) log("Ayar dosyası: " + cfgPath.toAbsolutePath());
-        final Config cfg = Config.load(cfgPath, overrides);
+    /**
+     * Taramayı yapar ve raporları outDir klasörüne yazar. Hem komut satırı hem sunucu modu kullanır.
+     *
+     * @return özet sayılar (repo, Java dosyası, kullanım, hata sayısı ve rapor klasörü)
+     */
+    static Map<String, Object> scan(final Config cfg, Path outDir) throws Exception {
+        Map<String, Object> summary = new java.util.LinkedHashMap<String, Object>();
         log("Kaynak: " + cfg.source + " | Aranan sınıflar: "
                 + (cfg.exceptionClasses.isEmpty() ? "-" : String.join(", ", cfg.exceptionClasses)));
         if (!cfg.exceptionClasses.isEmpty()) {
@@ -192,7 +230,9 @@ public final class ScannerApp {
             repos.add(r);
         }
         log(repos.size() + " repo taranacak.");
-        if (repos.isEmpty()) return;
+        summary.put("repositories", repos.size());
+        summary.put("excludedRepositories", all.size() - repos.size());
+        if (repos.isEmpty()) return summary;
 
         final GitRunner git = new GitRunner(cfg);
         final JavaSourceScanner scanner = new JavaSourceScanner(cfg);
@@ -221,7 +261,6 @@ public final class ScannerApp {
         PostgresExporter pg = cfg.db.enabled ? resolveInDatabase(cfg, results) : null;
 
         Date now = new Date();
-        Path outDir = cfg.outputDir.resolve(new SimpleDateFormat("yyyyMMdd_HHmm").format(now));
         ExcelReportWriter writer = new ExcelReportWriter(cfg, now);
 
         Path master = outDir.resolve("exception_scan_report.xlsx");
@@ -302,6 +341,11 @@ public final class ScannerApp {
             log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor, %d process bulundu%s.", sc, pu, rg, rp, pr,
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
+        summary.put("javaFiles", javaFiles);
+        summary.put("usages", usages);
+        summary.put("errors", errors);
+        summary.put("reportDir", outDir.toAbsolutePath().toString());
+        return summary;
     }
 
     /**
@@ -490,7 +534,13 @@ public final class ScannerApp {
         }
     }
 
-    private static synchronized void log(String msg) {
-        System.out.println("[" + new SimpleDateFormat("HH:mm:ss").format(new Date()) + "] " + msg);
+    /** Sunucu modunda tarama loglarını işin log dosyasına da yazmak için (aynı anda tek tarama çalışır) */
+    static volatile java.util.function.Consumer<String> logListener;
+
+    static synchronized void log(String msg) {
+        String line = "[" + new SimpleDateFormat("HH:mm:ss").format(new Date()) + "] " + msg;
+        System.out.println(line);
+        java.util.function.Consumer<String> l = logListener;
+        if (l != null) l.accept(line);
     }
 }
