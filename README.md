@@ -423,7 +423,7 @@ Repolar `work.dir` altında saklandığı için ilk taramadan sonraki taramalard
 
 ### Sadece gerekli dosyaların indirilmesi
 
-Büyük repolarda sürenin çoğu, taramada hiç okunmayan jar, resim, doküman ve binary dosyaların indirilmesine gider. `git.sparse=true` (varsayılan) iken sadece tarayıcının okuduğu dosyalar indirilir:
+Büyük repolarda sürenin çoğu, taramada hiç okunmayan jar, resim, doküman ve binary dosyaların indirilmesine gider. `git.sparse=true` yapılırsa sadece tarayıcının okuduğu dosyalar indirilir (varsayılan `false`, yani repolar tam klonlanır):
 
 - `.java` dosyaları
 - modül adı için `pom.xml`, `build.gradle`, `build.gradle.kts`, `build.xml`, `.project`
@@ -431,7 +431,7 @@ Büyük repolarda sürenin çoğu, taramada hiç okunmayan jar, resim, doküman 
 
 Bunun için git'in partial clone (`--filter=blob:none`) ve sparse checkout özellikleri kullanılır. Git sunucusu partial clone desteklemiyorsa git normal klonlamaya döner ve logda bir kez uyarı çıkar; bu durumda indirme süresi değişmez, sadece diske yazılan dosyalar azalır. Desteğin olup olmadığı Bitbucket sürümüne ve sunucu ayarlarına bağlıdır; ilk taramanın logunda bu uyarı yoksa partial clone çalışıyor demektir.
 
-Her repo için log satırında klonlama ve tarama süresi yazar (`klon 42 sn, tarama 3 sn`), tarama sonunda da toplamlar ve en uzun süren repo gösterilir. Böylece sürenin nereye gittiği görülebilir. Tüm dosyalar gerekiyorsa `git.sparse=false` yapın; var olan klonlar bir sonraki taramada tam hâle getirilir.
+Her repo için log satırında klonlama ve tarama süresi yazar (`klon 42 sn, tarama 3 sn`), tarama sonunda da toplamlar ve en uzun süren repo gösterilir. Böylece sürenin nereye gittiği görülebilir. `git.sparse` değiştirildiğinde var olan klonlar bir sonraki taramada yeni ayara uyarlanır (tam klondan sparse'a veya tersi).
 
 ## Bellek kullanımı
 
