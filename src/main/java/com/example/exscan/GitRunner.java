@@ -17,6 +17,10 @@ import java.util.stream.Stream;
 /**
  * Repoları sığ (--depth 1) olarak klonlar veya günceller. PATH'te git (2.31+) olmalıdır.
  * Token komut satırına yazılmaz; GIT_CONFIG_* ortam değişkenleriyle iletilir.
+ *
+ * git.sparse=true (varsayılan) iken sadece taramada okunan dosyalar indirilir (.java, modül dosyaları,
+ * EBML açıksa .ebml/.dsxml/processdefinition.xml): blob'suz partial clone + sparse checkout. Sunucu
+ * partial clone desteklemiyorsa git normal klona döner; sadece diske yazılan dosyalar azalır.
  */
 final class GitRunner {
 
@@ -36,26 +40,81 @@ final class GitRunner {
 
         if (Files.isDirectory(dir.resolve(".git"))) {
             String ref = branch.isEmpty() ? "HEAD" : branch;
-            run(dir, "git", "fetch", "--depth", "1", "--quiet", "origin", ref);
-            run(dir, "git", "reset", "--hard", "--quiet", "FETCH_HEAD");
+            checkFilterSupport(run(dir, "git", "fetch", "--depth", "1", "--quiet", "origin", ref));
+            if (cfg.gitSparse) {
+                // Sadece gerekli dosyalar; desenler değişmiş olabilir (ör. EBML açıldı), her seferinde yazılır
+                writeSparsePatterns(dir, sparsePatterns());
+                run(dir, "git", "reset", "--hard", "--quiet", "FETCH_HEAD");
+                // Desenler değiştiyse (ör. EBML açıldı, önceden tam klonlanmıştı) çalışma klasörüne uygula
+                run(dir, "git", "read-tree", "-mu", "HEAD");
+            } else {
+                run(dir, "git", "reset", "--hard", "--quiet", "FETCH_HEAD");
+                Path sparseFile = dir.resolve(".git").resolve("info").resolve("sparse-checkout");
+                if (Files.exists(sparseFile)) {
+                    // Önceden git.sparse=true ile klonlanmış: tüm dosyaları geri getir
+                    writeSparsePatterns(dir, Arrays.asList("/*"));
+                    run(dir, "git", "read-tree", "-mu", "HEAD");
+                    run(dir, "git", "config", "core.sparseCheckout", "false");
+                    Files.delete(sparseFile);
+                }
+            }
         } else {
             if (Files.exists(dir)) deleteRecursively(dir);
             Files.createDirectories(dir.getParent());
             List<String> cmd = new ArrayList<String>(Arrays.asList(
                     "git", "clone", "--depth", "1", "--single-branch", "--quiet"));
+            if (cfg.gitSparse) {
+                cmd.add("--filter=blob:none");
+                cmd.add("--no-checkout");
+            }
             if (!branch.isEmpty()) {
                 cmd.add("--branch");
                 cmd.add(branch);
             }
             cmd.add(url);
             cmd.add(dir.toString());
-            run(dir.getParent(), cmd.toArray(new String[0]));
+            checkFilterSupport(run(dir.getParent(), cmd.toArray(new String[0])));
+            if (cfg.gitSparse) {
+                writeSparsePatterns(dir, sparsePatterns());
+                // Gerekli dosyaların içerikleri burada tek seferde indirilir
+                run(dir, "git", "read-tree", "-mu", "HEAD");
+            }
         }
         repo.localPath = dir;
         try {
             readHead(repo);
         } catch (IOException e) {
             throw new IOException("HEAD okunamadı (repo boş olabilir): " + e.getMessage(), e);
+        }
+    }
+
+    /** Taramada okunan dosyalar (JavaSourceScanner, ModuleResolver, EbmlScanner) */
+    private List<String> sparsePatterns() {
+        List<String> p = new ArrayList<String>(Arrays.asList(
+                "*.java", "pom.xml", "build.gradle", "build.gradle.kts", "build.xml", ".project"));
+        if (cfg.ebml.enabled) {
+            p.addAll(Arrays.asList("*.ebml", "*.EBML", "*.dsxml", "*.DSXML", "processdefinition.xml"));
+        }
+        return p;
+    }
+
+    private void writeSparsePatterns(Path dir, List<String> patterns) throws IOException, InterruptedException {
+        run(dir, "git", "config", "core.sparseCheckout", "true");
+        Path info = dir.resolve(".git").resolve("info");
+        Files.createDirectories(info);
+        Files.write(info.resolve("sparse-checkout"),
+                (String.join("\n", patterns) + "\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static final java.util.concurrent.atomic.AtomicBoolean FILTER_WARNED =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** Sunucu partial clone desteklemiyorsa bir kez uyarır (git yine de tam klonlar) */
+    private void checkFilterSupport(String gitOutput) {
+        if (cfg.gitSparse && gitOutput.contains("filtering not recognized by server")
+                && FILTER_WARNED.compareAndSet(false, true)) {
+            ScannerApp.log("Uyarı: git sunucusu partial clone (--filter) desteklemiyor; repolar tam indiriliyor, "
+                    + "diske sadece gerekli dosyalar yazılıyor.");
         }
     }
 

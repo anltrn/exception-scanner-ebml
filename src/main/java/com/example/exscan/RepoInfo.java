@@ -22,6 +22,9 @@ final class RepoInfo {
     Path localPath;
     String branch = "";
     String commit = "";
+    /** Klonlama / güncelleme ve tarama süreleri (log için) */
+    volatile long cloneMillis;
+    volatile long scanMillis;
 
     RepoInfo(Config.Source source, String projectKey, String projectName, String slug,
              String name, String cloneUrl, String webUrl) {

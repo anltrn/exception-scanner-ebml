@@ -261,9 +261,10 @@ public final class ScannerApp {
                             String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
                                     r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
                                     r.count(EbmlFile.Kind.PROCESS));
-                            log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s", done.incrementAndGet(), total,
-                                    repo.id(), repo.localPath, r.javaFiles, r.usages.size(), ebmlInfo,
-                                    r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata"));
+                            log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s (klon %s, tarama %s)",
+                                    done.incrementAndGet(), total, repo.id(), repo.localPath, r.javaFiles, r.usages.size(),
+                                    ebmlInfo, r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata",
+                                    seconds(repo.cloneMillis), seconds(repo.scanMillis)));
                             return r;
                         }));
             }
@@ -274,6 +275,18 @@ public final class ScannerApp {
         }
         List<RepoResult> results = new ArrayList<RepoResult>();
         for (CompletableFuture<RepoResult> f : futures) results.add(f.join());
+        long cloneTotal = 0, scanTotal = 0;
+        RepoInfo slowest = null;
+        for (RepoInfo r : repos) {
+            cloneTotal += r.cloneMillis;
+            scanTotal += r.scanMillis;
+            if (slowest == null || r.cloneMillis > slowest.cloneMillis) slowest = r;
+        }
+        log(String.format("Repolar bitti: toplam klonlama %s, toplam tarama %s (işçiler paralel çalıştığı için gerçek "
+                + "süre daha kısa); en uzun klon %s (%s)", seconds(cloneTotal), seconds(scanTotal),
+                slowest == null ? "-" : slowest.id(), slowest == null ? "-" : seconds(slowest.cloneMillis)));
+        summary.put("cloneSeconds", cloneTotal / 1000);
+        summary.put("scanSeconds", scanTotal / 1000);
 
         // Veritabanı eşleştirmesi raporlardan önce yapılır ki Excel'de de class_id / method_id görünsün
         PostgresExporter pg = cfg.db.enabled ? resolveInDatabase(cfg, results) : null;
@@ -526,6 +539,7 @@ public final class ScannerApp {
 
     /** Repoyu klonlar / günceller. Başarılıysa null, değilse hatayı taşıyan sonucu döndürür. */
     private static RepoResult checkout(RepoInfo repo, Config cfg, GitRunner git) {
+        long t0 = System.nanoTime();
         try {
             if (cfg.source == Config.Source.LOCAL) git.readHeadQuietly(repo);
             else git.checkout(repo);
@@ -535,10 +549,13 @@ public final class ScannerApp {
             RepoResult r = new RepoResult(repo);
             r.errors.add(new ScanError(repo, "KLONLAMA", "", e.getMessage()));
             return r;
+        } finally {
+            repo.cloneMillis = (System.nanoTime() - t0) / 1_000_000;
         }
     }
 
     private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
+        long t0 = System.nanoTime();
         try {
             boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
             RepoResult result = javaSearch ? scanner.scan(repo) : new RepoResult(repo);
@@ -554,7 +571,14 @@ public final class ScannerApp {
             r.errors.add(new ScanError(repo, "BELLEK", "", "Bellek yetmedi. java -Xmx4g -jar ... ile daha fazla "
                     + "bellek verin veya --threads 1 ile tekrar deneyin."));
             return r;
+        } finally {
+            repo.scanMillis = (System.nanoTime() - t0) / 1_000_000;
         }
+    }
+
+    private static String seconds(long millis) {
+        long sec = Math.round(millis / 1000.0);
+        return sec >= 60 ? (sec / 60) + " dk " + (sec % 60) + " sn" : sec + " sn";
     }
 
     /**
