@@ -188,7 +188,7 @@ public final class ScannerApp {
         else all = new BitbucketClient(cfg).listRepositories();
         List<RepoInfo> repos = new ArrayList<RepoInfo>();
         for (RepoInfo r : all) {
-            if (cfg.excludeRepos.contains(r.slug) || cfg.excludeRepos.contains(r.id())) continue;
+            if (cfg.isExcluded(r)) continue;
             repos.add(r);
         }
         log(repos.size() + " repo taranacak.");
