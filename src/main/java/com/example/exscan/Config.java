@@ -57,7 +57,7 @@ final class Config {
     final Db db;
     final Ebml ebml;
 
-    /** Ekran (.ebml), region (.ebml) ve Jasper rapor (.dsxml) envanteri ayarları (ebml.*) */
+    /** Ekran (.ebml), region (.ebml), Jasper rapor (.dsxml) ve process envanteri ayarları (ebml.*) */
     static final class Ebml {
 
         enum ProjectNameSource { REPO, REPO_SLUG, MODULE, BITBUCKET_PROJECT }
@@ -80,6 +80,24 @@ final class Config {
         final String popupTable;
         final String regionTable;
         final String reportTable;
+        final String processDir;
+        final String processTable;
+        // ---- Mevcut ekran / popup / rapor / process tablolarında project_id güncellemesi
+        final boolean updateExisting;
+        final boolean updateOnlyEmpty;
+        final String existingProjectColumn;
+        final String existingScreenTable;
+        final String existingScreenNameColumn;
+        final String existingScreenTypeColumn;
+        final String existingScreenTypePage;
+        final String existingScreenTypeRegion;
+        final String existingPopupTable;
+        final String existingPopupNameColumn;
+        final String existingReportTable;
+        final String existingReportNameColumn;
+        final String existingProcessTable;
+        final String existingProcessNoColumn;
+        final String existingProcessNameColumn;
 
         Ebml(Properties p) {
             enabled = Boolean.parseBoolean(get(p, "ebml.enabled", "false"));
@@ -88,6 +106,7 @@ final class Config {
             pagePackage = segments(get(p, "ebml.page.package", "ebml.page"));
             popupPackage = segments(get(p, "ebml.popup.package", "ebml.popup"));
             reportPackage = segments(get(p, "ebml.report.package", "ebml.report"));
+            processDir = get(p, "ebml.process.dir", "process").trim();
             sourceRoots = list(get(p, "ebml.source.roots",
                     "src/main/java,src/main/resources,src/java,src/resources,JavaSource,source,resources,src"));
             fileNameWithExtension = Boolean.parseBoolean(get(p, "ebml.file.name.with.extension", "true"));
@@ -99,10 +118,26 @@ final class Config {
             projectTable = Db.ident(get(p, "db.project.table", schema + ".project"), "db.project.table");
             projectIdColumn = Db.ident(get(p, "db.project.id.column", "id"), "db.project.id.column");
             projectNameColumn = Db.ident(get(p, "db.project.name.column", "project_name"), "db.project.name.column");
-            screenTable = Db.ident(get(p, "db.screen.table", schema + ".screens"), "db.screen.table");
-            popupTable = Db.ident(get(p, "db.popup.table", schema + ".popups"), "db.popup.table");
-            regionTable = Db.ident(get(p, "db.region.table", schema + ".regions"), "db.region.table");
-            reportTable = Db.ident(get(p, "db.report.table", schema + ".jasper_reports"), "db.report.table");
+            screenTable = Db.ident(get(p, "db.screen.table", schema + ".all_screens"), "db.screen.table");
+            popupTable = Db.ident(get(p, "db.popup.table", schema + ".all_popups"), "db.popup.table");
+            regionTable = Db.ident(get(p, "db.region.table", schema + ".all_regions"), "db.region.table");
+            reportTable = Db.ident(get(p, "db.report.table", schema + ".all_reports"), "db.report.table");
+            processTable = Db.ident(get(p, "db.process.table", schema + ".all_processes"), "db.process.table");
+            updateExisting = Boolean.parseBoolean(get(p, "ebml.update.existing", "true"));
+            updateOnlyEmpty = Boolean.parseBoolean(get(p, "ebml.update.only.empty", "false"));
+            existingProjectColumn = Db.ident(get(p, "db.existing.project.column", "project_id"), "db.existing.project.column");
+            existingScreenTable = Db.ident(get(p, "db.existing.screen.table", schema + ".screen"), "db.existing.screen.table");
+            existingScreenNameColumn = Db.ident(get(p, "db.existing.screen.name.column", "name"), "db.existing.screen.name.column");
+            existingScreenTypeColumn = Db.ident(get(p, "db.existing.screen.type.column", "page_type"), "db.existing.screen.type.column");
+            existingScreenTypePage = get(p, "db.existing.screen.type.page", "page").trim();
+            existingScreenTypeRegion = get(p, "db.existing.screen.type.region", "region").trim();
+            existingPopupTable = Db.ident(get(p, "db.existing.popup.table", schema + ".popup"), "db.existing.popup.table");
+            existingPopupNameColumn = Db.ident(get(p, "db.existing.popup.name.column", "popup_name"), "db.existing.popup.name.column");
+            existingReportTable = Db.ident(get(p, "db.existing.report.table", schema + ".report"), "db.existing.report.table");
+            existingReportNameColumn = Db.ident(get(p, "db.existing.report.name.column", "report_name"), "db.existing.report.name.column");
+            existingProcessTable = Db.ident(get(p, "db.existing.process.table", schema + ".process"), "db.existing.process.table");
+            existingProcessNoColumn = Db.ident(get(p, "db.existing.process.no.column", "no"), "db.existing.process.no.column");
+            existingProcessNameColumn = Db.ident(get(p, "db.existing.process.name.column", "name"), "db.existing.process.name.column");
         }
 
         /** "ebml.region" -> [ebml, region] (küçük harf) */

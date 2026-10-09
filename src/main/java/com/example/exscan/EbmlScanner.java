@@ -1,6 +1,7 @@
 package com.example.exscan;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +13,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 
 /**
  * Repodaki ekran, region ve Jasper rapor dosyalarını bulur ve sınıflandırır:
@@ -19,6 +26,8 @@ import java.util.Map;
  *   Ekran  : ebml.page paketi (ya da alt paketleri) altındaki .ebml dosyaları
  *   Popup  : ebml.popup paketi (ya da alt paketleri) altındaki .ebml dosyaları
  *   Rapor  : ebml.report paketi (ya da alt paketleri) altındaki .dsxml dosyaları
+ *   Process: process klasörü altındaki 250001-XXX.par klasörlerinde bulunan processdefinition.xml dosyaları;
+ *            numara klasör adından, ad dosyadaki label özelliğinden alınır
  * Region kuralı önce uygulanır: ebml.page veya ebml.popup altında olup adı RG_ ile başlayan dosya region sayılır.
  * Kurallara uymayan .ebml / .dsxml dosyaları "sınıflandırılmadı" olarak sadece rapora yazılır.
  */
@@ -26,6 +35,9 @@ final class EbmlScanner {
 
     private static final String EBML = ".ebml";
     private static final String DSXML = ".dsxml";
+    private static final String PROCESS_DEFINITION = "processdefinition.xml";
+    /** 250001-RISM.par -> 250001 */
+    private static final Pattern PAR_DIR = Pattern.compile("(\\d+)(?:[-_](.*))?\\.par", Pattern.CASE_INSENSITIVE);
 
     private final Config cfg;
     private final Config.Ebml ebml;
@@ -53,7 +65,7 @@ final class EbmlScanner {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                     String n = file.getFileName().toString().toLowerCase(Locale.ROOT);
-                    if (n.endsWith(EBML) || n.endsWith(DSXML)) files.add(file);
+                    if (n.endsWith(EBML) || n.endsWith(DSXML) || n.equals(PROCESS_DEFINITION)) files.add(file);
                     return FileVisitResult.CONTINUE;
                 }
 
@@ -72,7 +84,52 @@ final class EbmlScanner {
         for (Path f : files) {
             String rel = ModuleResolver.relative(root, f);
             String module = ModuleResolver.moduleOf(root, f.getParent(), moduleCache);
-            result.ebmlFiles.add(classify(repo, rel, module));
+            EbmlFile e = classify(repo, rel, module);
+            if (e.kind == EbmlFile.Kind.PROCESS) {
+                try {
+                    String[] info = processInfo(f);
+                    e.processName = info[0];
+                    e.processCode = info[1];
+                    if (e.processName.isEmpty()) {
+                        result.errors.add(new ScanError(repo, "PROCESS_LABEL", rel, "label özelliği bulunamadı"));
+                    }
+                } catch (IOException | XMLStreamException ex) {
+                    result.errors.add(new ScanError(repo, "PROCESS_LABEL", rel, ex.getMessage()));
+                }
+            }
+            result.ebmlFiles.add(e);
+        }
+    }
+
+    /**
+     * processdefinition.xml içindeki process adını (label) ve kodunu (name) okur: kök elemanın
+     * özellikleri, kökte label yoksa adında "process" geçen ilk elemanınkiler. Dönüş: {label, name}
+     */
+    static String[] processInfo(Path file) throws IOException, XMLStreamException {
+        XMLInputFactory f = XMLInputFactory.newInstance();
+        f.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
+        f.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
+        InputStream in = Files.newInputStream(file);
+        try {
+            XMLStreamReader r = f.createXMLStreamReader(in);
+            try {
+                boolean root = true;
+                while (r.hasNext()) {
+                    if (r.next() != XMLStreamConstants.START_ELEMENT) continue;
+                    String label = r.getAttributeValue(null, "label");
+                    boolean processElement = r.getLocalName().toLowerCase(Locale.ROOT).contains("process");
+                    if (label != null && (root || processElement)) {
+                        String name = r.getAttributeValue(null, "name");
+                        return new String[]{label.trim(), name == null ? "" : name.trim()};
+                    }
+                    root = false;
+                }
+                return new String[]{"", ""};
+            } finally {
+                r.close();
+            }
+        } finally {
+            in.close();
         }
     }
 
@@ -101,7 +158,24 @@ final class EbmlScanner {
                 : ebml.projectNameSource == Config.Ebml.ProjectNameSource.BITBUCKET_PROJECT ? repo.projectKey : null;
         if (alt != null && !alt.isEmpty() && !alt.equals(e.projectName)) e.projectNameCandidates.add(alt);
 
-        if (lowerName.endsWith(EBML)) {
+        if (lowerName.equals(PROCESS_DEFINITION)) {
+            // process/250001-RISM.par/processdefinition.xml
+            int n = segments.size();
+            String parDir = n == 0 ? "" : dir.substring(dir.lastIndexOf('/') + 1);
+            Matcher m = PAR_DIR.matcher(parDir);
+            boolean underProcess = n >= 2 && segments.get(n - 2).equalsIgnoreCase(ebml.processDir);
+            if (m.matches() && underProcess && m.group(1).length() <= 18) {
+                e.kind = EbmlFile.Kind.PROCESS;
+                e.rule = "PAR";
+                e.processId = Long.valueOf(m.group(1));
+                e.processShortName = m.group(2) == null ? "" : m.group(2);
+                e.fileName = parDir;
+                e.packageName = "";
+            } else {
+                e.kind = EbmlFile.Kind.UNCLASSIFIED;
+                e.rule = "processdefinition.xml, " + ebml.processDir + "/<numara>-<ad>.par altında değil";
+            }
+        } else if (lowerName.endsWith(EBML)) {
             boolean prefix = !ebml.regionPrefix.isEmpty()
                     && lowerName.startsWith(ebml.regionPrefix.toLowerCase(Locale.ROOT));
             boolean regionPkg = under(segments, ebml.regionPackage);

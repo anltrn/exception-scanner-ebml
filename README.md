@@ -238,22 +238,25 @@ Nedeni `match_note` sütununda açıklanır.
 
 Her desenin `pattern.N.type` (çağrılarda `call.N.type`) değeri `usage_type_code` olarak yazılır. Verilmezse desen adından üretilir. Komut satırında `--pattern "KOD0_SERBEST_METIN=0,STRING,*"` biçimiyle de verilebilir. Doğru kullanımları saymak için bir desen tanımlayıp `pattern.N.legacy=false` yaparsanız, `is_legacy` sütunu sayesinde raporlarda eski kullanımlardan ayrılır.
 
-## Ekran, region ve Jasper rapor envanteri
+## Ekran, region, Jasper rapor ve process envanteri
 
 `--ebml` ile tarayıcı, repolardaki ekran ve rapor tanım dosyalarını da bulup proje bazında tablolara yazar:
 
 | Tablo | Dosyalar |
 |---|---|
-| `env.screens` | `ebml.page` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
-| `env.popups` | `ebml.popup` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
-| `env.regions` | Adı `RG_` ile başlayan **veya** `ebml.region` paketi altındaki `.ebml` dosyaları |
-| `env.jasper_reports` | `ebml.report` paketi (ve alt paketleri) altındaki `.dsxml` dosyaları |
+| `env.all_screens` | `ebml.page` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
+| `env.all_popups` | `ebml.popup` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
+| `env.all_regions` | Adı `RG_` ile başlayan **veya** `ebml.region` paketi altındaki `.ebml` dosyaları |
+| `env.all_reports` | `ebml.report` paketi (ve alt paketleri) altındaki `.dsxml` dosyaları |
+| `env.all_processes` | `process` klasörü altındaki `250001-RISM.par` gibi klasörlerde bulunan `processdefinition.xml` dosyaları |
 
-Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
+Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `all_regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
+
+Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>-<ad>.par` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır.
 
 ### Kurulum ve çalıştırma
 
-`sql/ebml_inventory_postgres.sql` dosyasını bir kez çalıştırın. Tek başına da çalışır; exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşır ve ona ekran, popup, region, rapor sayısı sütunlarını ekler.
+`sql/ebml_inventory_postgres.sql` dosyasını bir kez çalıştırın. Tek başına da çalışır; exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşır ve ona ekran, popup, region, rapor ve process sayısı sütunlarını ekler. Daha önce çalıştırdıysanız `env.all_processes` tablosu ve `process_count` sütunu için dosyayı yeniden çalıştırın (mevcut tablolara dokunmaz). Eski adlarla oluşturulmuş tablolar (`env.screens`, `env.popups`, `env.regions`, `env.jasper_reports`) varsa bu dosya onları verileriyle birlikte yeni adlarına (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`) taşır.
 
 ```bash
 # Sadece ekran/rapor envanteri
@@ -276,6 +279,27 @@ Her dosyanın ana proje adı `env.project.project_name` sütununda aranır ve bu
 | `BITBUCKET_PROJECT` | Bitbucket proje adı; bulunamazsa proje anahtarı |
 
 Sonuç `project_match` sütununa yazılır: `MATCHED`, `PROJECT_AMBIGUOUS` (aynı adda birden fazla proje, en küçük id seçildi) veya `PROJECT_NOT_FOUND` (`project_id` boş). Aranan ad her durumda `project_name` sütununda durur. İlk denemede `--db-dry-run` ile çalıştırıp Excel'deki "Proje Eşleşmesi" sütununa bakarak doğru ayarı bulabilirsiniz.
+
+### Excel raporundaki sayılar
+
+`--ebml` ile üretilen Excel raporunda:
+
+- **Özet** sayfasında ekran, popup, region, Jasper rapor ve process sayılarının toplamı ile tür bazında dağılımı bulunur. Altındaki repo tablosunda her repo, bağlı olduğu proje ile birlikte ve bu beş sayı ayrı sütunlarda olacak şekilde listelenir.
+- **EBML Dosyaları** sayfasında hangi dosyanın nerede bulunduğu dosya bazında yer alır.
+
+### Mevcut tablolarda project_id güncellemesi
+
+`--ebml --db` ile çalıştırıldığında, taramada projesi bulunan dosyaların `project_id` değeri mevcut tablolara da yazılır:
+
+| Tablo | Eşleştirme |
+|---|---|
+| `env.screen` (`page_type = 'page'`) | Ekranlar: `name` = `EKRAN001.ebml` |
+| `env.screen` (`page_type = 'region'`) | Region'lar: `name` = `RG_Adres.ebml` |
+| `env.popup` | `popup_name` = `pp_deneme` |
+| `env.report` | `report_name` = rapor adı (`.dsxml` uzantılı ve uzantısız denenir) |
+| `env.process` | `no` = klasördeki numara (`250001`) veya `processdefinition.xml` içindeki `name`; bulunamazsa `name` = klasör adında `-` işaretinden sonraki kısım (`RISM`) |
+
+Karşılaştırmalar büyük/küçük harfe ve baştaki/sondaki boşluklara duyarsızdır. Aynı ad farklı projelerde bulunduysa hangi projeye ait olduğu bilinemeyeceği için o kayıt güncellenmez ve konsolda sayısı yazılır. Varsayılan olarak `project_id` değeri farklı olan satırlar güncellenir; `ebml.update.only.empty=true` ile sadece boş olanlar doldurulur. Tablo veya sütun bulunamazsa sadece o tablo atlanır, tarama kaydı yine yapılır. Güncelleme envanter kayıtlarıyla aynı transaction'da yapılır; `--db-dry-run` modunda yapılmaz. Kapatmak için `ebml.update.existing=false`; tablo ve sütun adları `db.existing.*` ayarlarıyla değiştirilebilir.
 
 Her kayıtta dosya adı, paket, repo içindeki yol, Bitbucket'ta dosyayı açan bağlantı (taranan commit'e sabitlenmiş) ve kayıt tarihi (`created_at`) bulunur. Son taramanın proje bazlı sayıları için `env.v_ebml_inventory_latest` görünümü kullanılabilir.
 

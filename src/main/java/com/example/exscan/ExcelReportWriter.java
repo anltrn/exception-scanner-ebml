@@ -36,6 +36,9 @@ final class ExcelReportWriter {
     /** Excel bir sayfada en fazla 65.530 köprü destekler; sonrası düz metin olarak yazılır. */
     private static final int MAX_LINKS_PER_SHEET = 65000;
     private static final Locale TR = new Locale("tr", "TR");
+    /** Özet sayfasında sayıları gösterilen türler (sıra sütun sırasıdır) */
+    private static final EbmlFile.Kind[] EBML_KINDS = {EbmlFile.Kind.SCREEN, EbmlFile.Kind.POPUP,
+            EbmlFile.Kind.REGION, EbmlFile.Kind.REPORT, EbmlFile.Kind.PROCESS};
 
     private final Config cfg;
     private final Date scanDate;
@@ -139,11 +142,17 @@ final class ExcelReportWriter {
         }
         row = kv(s, st, row, "Türeyen alt sınıf tanımları", subs);
         if (cfg.ebml.enabled) {
-            for (EbmlFile.Kind k : EbmlFile.Kind.values()) {
-                long n = 0;
-                for (RepoResult r : results) n += r.count(k);
-                row = kv(s, st, row, "EBML: " + k.label, n);
+            long all = 0;
+            long[] perKind = new long[EBML_KINDS.length];
+            for (int i = 0; i < EBML_KINDS.length; i++) {
+                for (RepoResult r : results) perKind[i] += r.count(EBML_KINDS[i]);
+                all += perKind[i];
             }
+            row = kv(s, st, row, "Ekran / popup / region / rapor / process (detaylar: 'EBML Dosyaları')", all);
+            for (int i = 0; i < EBML_KINDS.length; i++) row = kv(s, st, row, "   " + EBML_KINDS[i].label, perKind[i]);
+            long un = 0;
+            for (RepoResult r : results) un += r.count(EbmlFile.Kind.UNCLASSIFIED);
+            if (un > 0) row = kv(s, st, row, "   " + EbmlFile.Kind.UNCLASSIFIED.label, un);
         }
         row = kv(s, st, row, "Tarama hataları", errs);
         row++;
@@ -160,6 +169,12 @@ final class ExcelReportWriter {
             headers.add("Boş Catch");
             widths.add(10);
             widths.add(11);
+        }
+        if (cfg.ebml.enabled) {
+            for (EbmlFile.Kind k : EBML_KINDS) {
+                headers.add(k.label);
+                widths.add(12);
+            }
         }
         headers.add("Alt Sınıf");
         headers.add("Hata");
@@ -185,6 +200,9 @@ final class ExcelReportWriter {
             if (cfg.reportCatches) {
                 num(x, c++, r.catches.size());
                 num(x, c++, r.emptyCatches());
+            }
+            if (cfg.ebml.enabled) {
+                for (EbmlFile.Kind k : EBML_KINDS) num(x, c++, r.count(k));
             }
             num(x, c++, r.subclasses.size());
             num(x, c, r.errors.size());
@@ -403,8 +421,8 @@ final class ExcelReportWriter {
         Sheet s = wb.createSheet("EBML Dosyaları");
         boolean db = cfg.db.enabled;
         List<String> headers = new ArrayList<String>(Arrays.asList("Tür", "Kural", "Proje", "Repo", "Modül",
-                "Paket", "Dosya Adı", "Dosya Yolu", "Aranan Proje Adı"));
-        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(16, 22, 14, 24, 20, 50, 36, 70, 24));
+                "Paket", "Dosya Adı", "Dosya Yolu", "Process Id", "Process Adı", "Aranan Proje Adı"));
+        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(16, 22, 14, 24, 20, 50, 36, 70, 12, 36, 24));
         if (db) {
             headers.addAll(Arrays.asList("DB Proje Id", "Proje Eşleşmesi"));
             widths.addAll(Arrays.asList(12, 20));
@@ -427,6 +445,8 @@ final class ExcelReportWriter {
                 text(x, c++, e.packageName);
                 text(x, c++, e.fileName);
                 text(x, c++, e.file);
+                if (e.processId == null) text(x, c++, ""); else num(x, c++, e.processId.longValue());
+                text(x, c++, e.processName);
                 text(x, c++, e.projectName);
                 if (db) {
                     if (e.projectId == null) text(x, c++, ""); else num(x, c++, e.projectId.longValue());

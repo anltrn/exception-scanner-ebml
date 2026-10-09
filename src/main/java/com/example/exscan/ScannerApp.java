@@ -57,7 +57,7 @@ public final class ScannerApp {
             "  --db                 Kullanımları PostgreSQL envanteriyle eşleştirip tabloya yaz (db.* ayarları)",
             "  --db-dry-run         Eşleştir ve raporda göster ama tabloya yazma",
             "  --db-note <metin>    Tarama kaydına açıklama ekle, ör. \"Ekim takibi\"",
-            "  --ebml               Ekran/popup/region (.ebml) ve Jasper rapor (.dsxml) dosyalarını da bul",
+            "  --ebml               Ekran/popup/region (.ebml), Jasper rapor (.dsxml) ve process (.par) tanımlarını da bul",
             "                       (--class verilmezse sadece bu envanter çıkarılır)",
             "  --out <klasör>       Raporların yazılacağı klasör",
             "  --threads <n>        Aynı anda taranacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
@@ -204,8 +204,9 @@ public final class ScannerApp {
         for (final RepoInfo repo : repos) {
             futures.add(pool.submit(() -> {
                 RepoResult r = process(repo, cfg, git, scanner);
-                String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor",
-                        r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT));
+                String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
+                        r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
+                        r.count(EbmlFile.Kind.PROCESS));
                 log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s", done.incrementAndGet(), total,
                         repo.id(), repo.localPath, r.javaFiles, r.usages.size(), ebmlInfo,
                         r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata"));
@@ -262,8 +263,9 @@ public final class ScannerApp {
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
-                                + " Jasper rapor yazıldı" + (ir.ebmlSkipped > 0
+                                + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0
                                 ? ", projesi bulunamayan " + ir.ebmlSkipped + " dosya atlandı" : "") + ".");
+                        for (String line : ir.existing) log("project_id güncellemesi: " + line);
                     }
                 }
             } catch (Exception e) {
@@ -288,15 +290,16 @@ public final class ScannerApp {
         boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
         if (javaSearch && usages == 0) diagnose(cfg, results, javaFiles, kotlin, mentions, parseFailures);
         if (cfg.ebml.enabled) {
-            long sc = 0, pu = 0, rg = 0, rp = 0, un = 0;
+            long sc = 0, pu = 0, rg = 0, rp = 0, pr = 0, un = 0;
             for (RepoResult r : results) {
                 sc += r.count(EbmlFile.Kind.SCREEN);
                 pu += r.count(EbmlFile.Kind.POPUP);
                 rg += r.count(EbmlFile.Kind.REGION);
                 rp += r.count(EbmlFile.Kind.REPORT);
+                pr += r.count(EbmlFile.Kind.PROCESS);
                 un += r.count(EbmlFile.Kind.UNCLASSIFIED);
             }
-            log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor bulundu%s.", sc, pu, rg, rp,
+            log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor, %d process bulundu%s.", sc, pu, rg, rp, pr,
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
     }
