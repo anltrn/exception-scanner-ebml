@@ -8,7 +8,10 @@ metadata:
       [{"from":{"kind":"ImageStreamTag","name":"exception-scanner:latest"},
         "fieldPath":"spec.template.spec.containers[?(@.name==\"scanner\")].image"}]
 spec:
-  # Tarama gecmisi pod icinde tutuldugu ve disk RWO oldugu icin tek pod
+  # Uygulama surekli ayakta kalir: haftalik otomatik tarama pod icindeki zamanlayiciyla calisir.
+  # Pod cokerse veya liveness kontrolu basarisiz olursa OpenShift yeniden baslatir; planlanan saatte
+  # kapali kaldiysa kacan tarama acilista otomatik baslatilir.
+  # Tarama gecmisi pod icinde tutuldugu ve disk RWO oldugu icin tek pod.
   replicas: 1
   strategy:
     type: Recreate
@@ -33,6 +36,16 @@ spec:
               value: /data/work
             - name: SCANNER_OUTPUT_DIR
               value: /data/reports
+            # Haftalik otomatik tarama: Spring cron (saniye dakika saat gun ay haftanin-gunu), "-" kapatir
+            - name: SCANNER_SCHEDULE_CRON
+              value: "0 0 2 * * SUN"
+            - name: SCANNER_SCHEDULE_ZONE
+              value: Europe/Istanbul
+            - name: TZ
+              value: Europe/Istanbul
+            # Paralel git islemleri JVM disinda bellek kullanir; heap limitin %60'i
+            - name: MAX_RAM_PERCENTAGE
+              value: "60"
             # Sirket CA sertifikasi (PEM) icin: asagidaki ca-bundle volume'unu acip bu degeri verin
             # - name: EXTRA_CA_BUNDLE
             #   value: /etc/pki/extra/ca-bundle.crt
@@ -52,11 +65,11 @@ spec:
             #   readOnly: true
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: "1"
+              memory: 2Gi
             limits:
-              cpu: "2"
-              memory: 3Gi
+              cpu: "4"
+              memory: 4Gi
           startupProbe:
             httpGet:
               path: /actuator/health/liveness

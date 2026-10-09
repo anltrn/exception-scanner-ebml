@@ -94,7 +94,7 @@ class ScanJobService {
     }
 
     /** İsteği doğrular (hatalıysa IllegalArgumentException) ve sıraya koyar. */
-    synchronized ScanJob submit(ScanRequest request) throws IOException {
+    synchronized ScanJob submit(ScanRequest request, ScanJob.Trigger trigger) throws IOException {
         if (request == null) request = new ScanRequest(null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null);
         Properties overrides = overrides(request);
@@ -104,6 +104,7 @@ class ScanJobService {
         job.createdAt = Instant.now();
         job.id = ID_TIME.format(job.createdAt) + "-" + UUID.randomUUID().toString().substring(0, 4);
         job.status = ScanJob.Status.QUEUED;
+        job.trigger = trigger;
         job.request = request;
         Files.createDirectories(jobDir(job.id));
         save(job);
@@ -149,6 +150,16 @@ class ScanJobService {
                 ScannerApp.log("Uyarı: " + job.id + " durumu kaydedilemedi: " + e.getMessage());
             }
         }
+    }
+
+    /** Sırada bekleyen veya çalışan, verilen kaynaktan başlatılmış tarama var mı */
+    boolean hasActive(ScanJob.Trigger trigger) {
+        for (ScanJob j : jobs.values()) {
+            if (j.trigger == trigger && (j.status == ScanJob.Status.QUEUED || j.status == ScanJob.Status.RUNNING)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     List<ScanJob> list() {

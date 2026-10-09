@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -60,7 +60,8 @@ public final class ScannerApp {
             "  --ebml               Ekran/popup/region (.ebml), Jasper rapor (.dsxml) ve process (.par) tanımlarını da bul",
             "                       (--class verilmezse sadece bu envanter çıkarılır)",
             "  --out <klasör>       Raporların yazılacağı klasör",
-            "  --threads <n>        Aynı anda taranacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
+            "  --threads <n>        Aynı anda ayrıştırılacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
+            "  --git-threads <n>    Aynı anda klonlanacak/güncellenecek repo sayısı (varsayılan 8)",
             "  --console-limit <n>  Konsola yazılacak en fazla kullanım sayısı (varsayılan 200, 0 = yazma)",
             "  --server             Komut satırı yerine REST API + Swagger arayüzü olarak çalış (port: PORT, varsayılan 8080)",
             "  --help               Bu yardımı göster",
@@ -188,6 +189,9 @@ public final class ScannerApp {
                 case "--threads":
                     overrides.setProperty("threads", value(args, ++i, a));
                     break;
+                case "--git-threads":
+                    overrides.setProperty("git.threads", value(args, ++i, a));
+                    break;
                 case "--out":
                     overrides.setProperty("output.dir", value(args, ++i, a));
                     break;
@@ -239,23 +243,37 @@ public final class ScannerApp {
         final AtomicInteger done = new AtomicInteger();
         final int total = repos.size();
 
-        ExecutorService pool = Executors.newFixedThreadPool(cfg.threads);
-        List<Future<RepoResult>> futures = new ArrayList<Future<RepoResult>>();
-        for (final RepoInfo repo : repos) {
-            futures.add(pool.submit(() -> {
-                RepoResult r = process(repo, cfg, git, scanner);
-                String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
-                        r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
-                        r.count(EbmlFile.Kind.PROCESS));
-                log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s", done.incrementAndGet(), total,
-                        repo.id(), repo.localPath, r.javaFiles, r.usages.size(), ebmlInfo,
-                        r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata"));
-                return r;
-            }));
+        // Klonlama (ağ) ve ayrıştırma (işlemci/bellek) ayrı havuzlarda: repolar klonlandıkça taranır.
+        // Repolar projeler arasında sırayla dağıtılır ki tüm projeler aynı anda ilerlesin.
+        log(String.format("Paralellik: %d klonlama, %d tarama işçisi; %d proje aynı anda", cfg.gitThreads, cfg.threads,
+                countProjects(repos)));
+        ExecutorService clonePool = Executors.newFixedThreadPool(cfg.gitThreads);
+        ExecutorService scanPool = Executors.newFixedThreadPool(cfg.threads);
+        List<CompletableFuture<RepoResult>> futures =
+                new ArrayList<CompletableFuture<RepoResult>>(java.util.Collections.nCopies(total, null));
+        try {
+            for (final int idx : interleaveByProject(repos)) {
+                final RepoInfo repo = repos.get(idx);
+                futures.set(idx, CompletableFuture
+                        .supplyAsync(() -> checkout(repo, cfg, git), clonePool)
+                        .thenApplyAsync(failed -> failed != null ? failed : scanRepo(repo, cfg, scanner), scanPool)
+                        .thenApply(r -> {
+                            String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
+                                    r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
+                                    r.count(EbmlFile.Kind.PROCESS));
+                            log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s", done.incrementAndGet(), total,
+                                    repo.id(), repo.localPath, r.javaFiles, r.usages.size(), ebmlInfo,
+                                    r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata"));
+                            return r;
+                        }));
+            }
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
+        } finally {
+            clonePool.shutdownNow();
+            scanPool.shutdownNow();
         }
-        pool.shutdown();
         List<RepoResult> results = new ArrayList<RepoResult>();
-        for (Future<RepoResult> f : futures) results.add(f.get());
+        for (CompletableFuture<RepoResult> f : futures) results.add(f.join());
 
         // Veritabanı eşleştirmesi raporlardan önce yapılır ki Excel'de de class_id / method_id görünsün
         PostgresExporter pg = cfg.db.enabled ? resolveInDatabase(cfg, results) : null;
@@ -506,16 +524,21 @@ public final class ScannerApp {
         return args[i];
     }
 
-    private static RepoResult process(RepoInfo repo, Config cfg, GitRunner git, JavaSourceScanner scanner) {
+    /** Repoyu klonlar / günceller. Başarılıysa null, değilse hatayı taşıyan sonucu döndürür. */
+    private static RepoResult checkout(RepoInfo repo, Config cfg, GitRunner git) {
         try {
             if (cfg.source == Config.Source.LOCAL) git.readHeadQuietly(repo);
             else git.checkout(repo);
+            return null;
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             RepoResult r = new RepoResult(repo);
             r.errors.add(new ScanError(repo, "KLONLAMA", "", e.getMessage()));
             return r;
         }
+    }
+
+    private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
         try {
             boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
             RepoResult result = javaSearch ? scanner.scan(repo) : new RepoResult(repo);
@@ -532,6 +555,30 @@ public final class ScannerApp {
                     + "bellek verin veya --threads 1 ile tekrar deneyin."));
             return r;
         }
+    }
+
+    /**
+     * Repoların işlenme sırası: projeler arasında sırayla (A1, B1, C1, A2, B2, ...). Böylece bir projenin
+     * çok sayıda reposu diğer projeleri bekletmez. Dönen değerler repos listesindeki indekslerdir.
+     */
+    static List<Integer> interleaveByProject(List<RepoInfo> repos) {
+        Map<String, java.util.Deque<Integer>> byProject = new java.util.LinkedHashMap<String, java.util.Deque<Integer>>();
+        for (int i = 0; i < repos.size(); i++) {
+            byProject.computeIfAbsent(String.valueOf(repos.get(i).projectKey), k -> new java.util.ArrayDeque<Integer>()).add(i);
+        }
+        List<Integer> order = new ArrayList<Integer>(repos.size());
+        while (order.size() < repos.size()) {
+            for (java.util.Deque<Integer> q : byProject.values()) {
+                if (!q.isEmpty()) order.add(q.poll());
+            }
+        }
+        return order;
+    }
+
+    private static int countProjects(List<RepoInfo> repos) {
+        java.util.Set<String> keys = new java.util.HashSet<String>();
+        for (RepoInfo r : repos) keys.add(String.valueOf(r.projectKey));
+        return keys.size();
     }
 
     /** Sunucu modunda tarama loglarını işin log dosyasına da yazmak için (aynı anda tek tarama çalışır) */

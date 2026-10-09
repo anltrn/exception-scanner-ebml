@@ -4,7 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Sunucu modu ayarları (application.properties veya ortam değişkenleri):
- * SCANNER_CONFIG, SCANNER_WORK_DIR, SCANNER_OUTPUT_DIR, SCANNER_API_KEY.
+ * SCANNER_CONFIG, SCANNER_WORK_DIR, SCANNER_OUTPUT_DIR, SCANNER_API_KEY, SCANNER_SCHEDULE_CRON,
+ * SCANNER_SCHEDULE_ZONE.
  */
 @ConfigurationProperties(prefix = "scanner")
 public class ServerSettings {
@@ -17,6 +18,10 @@ public class ServerSettings {
     private String outputDir = "./executeReports";
     /** Doluysa /api altındaki isteklerde X-API-Key başlığı bu değer olmalı */
     private String apiKey = "";
+    /** Otomatik tarama zamanı (Spring cron: saniye dakika saat gün ay haftanın-günü); "-" kapatır */
+    private String scheduleCron = "0 0 2 * * SUN";
+    /** Cron'un yorumlandığı saat dilimi */
+    private String scheduleZone = "Europe/Istanbul";
 
     public String getConfig() { return config; }
     public void setConfig(String config) { this.config = config; }
@@ -26,4 +31,8 @@ public class ServerSettings {
     public void setOutputDir(String outputDir) { this.outputDir = outputDir; }
     public String getApiKey() { return apiKey; }
     public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+    public String getScheduleCron() { return scheduleCron; }
+    public void setScheduleCron(String scheduleCron) { this.scheduleCron = scheduleCron; }
+    public String getScheduleZone() { return scheduleZone; }
+    public void setScheduleZone(String scheduleZone) { this.scheduleZone = scheduleZone; }
 }

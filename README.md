@@ -93,7 +93,8 @@ Parametreler ayar dosyasındaki değerlerin üzerine yazar; ayar dosyası yoksa 
 | `--call <çağrı>` | Aranacak metot çağrısı, `[nesne.]metot:argümanlar` (birden fazla verilebilir) |
 | `--throw-only` | Sadece doğrudan `throw new ...` şeklindekiler |
 | `--lenient` | Import ve paket kontrolü yapmadan sadece sınıf adına göre eşleştir |
-| `--threads <n>` | Aynı anda taranacak repo sayısı (varsayılan 4) |
+| `--threads <n>` | Aynı anda ayrıştırılacak repo sayısı (varsayılan 4) |
+| `--git-threads <n>` | Aynı anda klonlanacak/güncellenecek repo sayısı (varsayılan 8) |
 | `--out <klasör>` | Raporların yazılacağı klasör (varsayılan `./executeReports`) |
 | `--console-limit <n>` | Konsola yazılacak en fazla kullanım (varsayılan 200, `0` = yazma) |
 | `--help` | Yardım |
@@ -337,7 +338,15 @@ java -jar target/exception-scanner-1.0.0.jar --server
 }
 ```
 
-Taramalar sırayla çalışır (aynı anda tek tarama); sonradan gelenler sırada bekler. Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
+Taramalar sırayla çalışır (aynı anda tek tarama isteği); sonradan gelenler sırada bekler. Bir taramanın içindeki projeler ve repolar ise paralel işlenir (bkz. [Paralel işleme](#paralel-işleme)). Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
+
+### Haftalık otomatik tarama
+
+Sunucu ayakta olduğu sürece haftada bir, sunucudaki `scanner.properties` ile kendiliğinden tarar (Swagger'dan `{}` gönderilmiş gibi). Varsayılan zaman her Pazar 02:00'dir (İstanbul saati). Swagger'da `GET /api/schedule` bir sonraki çalışma zamanını gösterir. Otomatik taramalar listede `"trigger": "SCHEDULE"`, Swagger/REST ile başlatılanlar `"API"` olarak görünür. Bunların dışında istediğiniz zaman `POST /api/scans` ile tarama başlatabilirsiniz.
+
+Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı vb.) o haftanın taraması kaçmaz: açılışta, son planlanan zamandan sonra otomatik tarama yapılmadığı görülürse hemen başlatılır. Önceki otomatik tarama hâlâ sürüyorsa yenisi başlatılmaz.
+
+Zamanı değiştirmek için `SCANNER_SCHEDULE_CRON` kullanılır. Format Spring cron'dur: `saniye dakika saat gün ay haftanın-günü`. Örneğin `0 30 1 * * MON` her Pazartesi 01:30 demektir. `-` verilirse otomatik tarama kapanır.
 
 Sunucu ayarları ortam değişkenleriyle verilir:
 
@@ -347,6 +356,8 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 | `SCANNER_CONFIG` | `scanner.properties` | Temel ayar dosyası |
 | `SCANNER_WORK_DIR` | `./scannedRepos` | Klonların tutulduğu klasör |
 | `SCANNER_OUTPUT_DIR` | `./executeReports` | Raporların yazıldığı klasör |
+| `SCANNER_SCHEDULE_CRON` | `0 0 2 * * SUN` | Haftalık otomatik tarama zamanı; `-` kapatır |
+| `SCANNER_SCHEDULE_ZONE` | `Europe/Istanbul` | Cron'un saat dilimi |
 | `SCANNER_API_KEY` | boş | Doluysa `/api` istekleri `X-API-Key` başlığını ister (Swagger'da **Authorize**) |
 | `EXTRA_CA_BUNDLE` | boş | Şirket CA sertifikaları (PEM); Java'ya ve git'e eklenir |
 | `BITBUCKET_USERNAME`, `BITBUCKET_TOKEN`, `DB_USER`, `DB_PASSWORD` | | Komut satırındaki gibi |
@@ -378,7 +389,7 @@ Oluşan kaynaklar:
 | Dosya | İçerik |
 |---|---|
 | `build.yaml` | ImageStream ve BuildConfig |
-| `deployment.yaml` | Tek pod, sağlık kontrolleri, 1–3 GiB bellek, root olmayan güvenlik ayarları |
+| `deployment.yaml` | Tek pod, sağlık kontrolleri, haftalık tarama zamanı, 2–4 GiB bellek, root olmayan güvenlik ayarları |
 | `pvc.yaml` | 20 GiB disk: klonlar (`/data/work`) ve raporlar (`/data/reports`) |
 | `service.yaml`, `route.yaml` | HTTPS (edge) Route, büyük rapor indirmeleri için 5 dakika zaman aşımı |
 | `scanner.properties` | `exception-scanner-config` ConfigMap'i; değişince pod yeniden başlar |
@@ -387,9 +398,20 @@ Notlar:
 
 - **Şirket içi registry / Maven mirror:** İmajlar `BUILD_IMAGE` ve `RUNTIME_IMAGE` build argümanlarıyla değiştirilebilir (`build.yaml` içinde örnek var).
 - **Şirket CA sertifikası:** Bitbucket'ın sertifikası tanınmıyorsa boş bir ConfigMap oluşturup `oc label configmap trusted-ca config.openshift.io/inject-trusted-cabundle=true` ile etiketleyin. Ardından `deployment.yaml` içindeki `ca-bundle` satırlarını ve `EXTRA_CA_BUNDLE` değişkenini açın. Kendi PEM dosyanızı da ConfigMap olarak bağlayabilirsiniz.
-- **Bellek:** Heap, konteyner limitinin %75'i olarak ayarlanır (`MAX_RAM_PERCENTAGE`). Çok büyük repolarda limiti artırın veya `threads` değerini düşürün.
+- **Bellek:** Heap, konteyner limitinin %60'ı olarak ayarlanır (`MAX_RAM_PERCENTAGE`); kalan bellek paralel çalışan git işlemlerine kalır. Çok büyük repolarda limiti artırın veya `threads` değerini düşürün.
+- **Sürekli çalışma:** Pod sürekli ayakta kalır, haftalık tarama pod içindeki zamanlayıcıyla yapılır; ayrıca CronJob gerekmez. Pod çökerse OpenShift yeniden başlatır.
 - **Tek pod:** Tarama geçmişi pod'da tutulduğu ve disk ReadWriteOnce olduğu için `replicas: 1` ve `Recreate` stratejisi kullanılır.
 - **Erişim:** Route dışarı açıksa `SCANNER_API_KEY` mutlaka tanımlanmalı; Swagger ve sağlık kontrolleri anahtarsız açılır, `/api` istekleri anahtar ister.
+
+## Paralel işleme
+
+Çok sayıda proje ve repo tarandığında süre büyük ölçüde repoların çekilmesine (klonlama / güncelleme) gider. Bu yüzden:
+
+- `bitbucket.projects=A,B,C,D,E` gibi birden fazla proje verildiğinde projelerin repo listeleri Bitbucket'tan paralel alınır.
+- Repolar projeler arasında sırayla dağıtılır (A1, B1, C1, D1, E1, A2, ...). Böylece repo sayısı çok olan bir proje diğerlerini bekletmez, beş proje aynı anda ilerler.
+- Klonlama ve ayrıştırma ayrı işçi havuzlarında çalışır. `git.threads` (varsayılan 8) aynı anda klonlanan/güncellenen repo sayısıdır; ağ işi olduğu için yüksek tutulabilir. `threads` (varsayılan 4) aynı anda ayrıştırılan repo sayısıdır; işlemci ve bellek kullandığı için düşük tutulur. Bir repo klonlanır klonlanmaz ayrıştırmaya geçer, bu sırada diğer repolar çekilmeye devam eder.
+
+Repolar `work.dir` altında saklandığı için ilk taramadan sonraki taramalarda sadece değişiklikler çekilir ve tarama çok daha hızlı biter. `git.threads` değerini Bitbucket sunucusunu zorlamayacak kadar tutun.
 
 ## Bellek kullanımı
 
