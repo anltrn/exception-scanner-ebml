@@ -284,9 +284,8 @@ Sonuç `project_match` sütununa yazılır: `MATCHED`, `PROJECT_AMBIGUOUS` (ayn�
 
 `--ebml` ile üretilen Excel raporunda:
 
-- **Özet** sayfasında ekran, popup, region, Jasper rapor ve process sayılarının toplamı ile tür bazında dağılımı bulunur. Repo tablosunda her repo için bu beş sayı ayrı sütunlarda yer alır.
-- **Proje Envanteri** sayfasında her proje için ekran, popup, region, rapor, process ve toplam sayıları listelenir, en altta genel toplam satırı vardır. Veritabanı açıksa (`--db`) projeler `env.project` kaydına göre gruplanır ve "DB Proje Id" ile "Proje Eşleşmesi" sütunları da gösterilir; kapalıysa aranan proje adına göre gruplanır. Sadece envanter çıkarıldığında (`--class` verilmeden) rapor bu sayfayla açılır.
-- **EBML Dosyaları** sayfasında dosya bazında detaylar bulunur.
+- **Özet** sayfasında ekran, popup, region, Jasper rapor ve process sayılarının toplamı ile tür bazında dağılımı bulunur. Altındaki repo tablosunda her repo, bağlı olduğu proje ile birlikte ve bu beş sayı ayrı sütunlarda olacak şekilde listelenir.
+- **EBML Dosyaları** sayfasında hangi dosyanın nerede bulunduğu dosya bazında yer alır.
 
 ### Mevcut tablolarda project_id güncellemesi
 

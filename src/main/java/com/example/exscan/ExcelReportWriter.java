@@ -36,8 +36,7 @@ final class ExcelReportWriter {
     /** Excel bir sayfada en fazla 65.530 köprü destekler; sonrası düz metin olarak yazılır. */
     private static final int MAX_LINKS_PER_SHEET = 65000;
     private static final Locale TR = new Locale("tr", "TR");
-    private static final String EBML_PROJECT_SHEET = "Proje Envanteri";
-    /** Proje bazlı sayılarda gösterilen türler (sıra sütun sırasıdır) */
+    /** Özet sayfasında sayıları gösterilen türler (sıra sütun sırasıdır) */
     private static final EbmlFile.Kind[] EBML_KINDS = {EbmlFile.Kind.SCREEN, EbmlFile.Kind.POPUP,
             EbmlFile.Kind.REGION, EbmlFile.Kind.REPORT, EbmlFile.Kind.PROCESS};
 
@@ -60,16 +59,11 @@ final class ExcelReportWriter {
             messages(wb, st, results);
             if (cfg.reportCatches) catches(wb, st, results);
             subclasses(wb, st, results);
-            if (cfg.ebml.enabled) {
-                ebmlByProject(wb, st, results);
-                ebmlFiles(wb, st, results);
-            }
+            if (cfg.ebml.enabled) ebmlFiles(wb, st, results);
             errors(wb, st, results);
 
-            // Detaylar ilk açılışta görünsün: Kullanımlar sayfası en başa alınır ve seçili açılır.
-            // Sadece ekran/rapor envanteri çıkarıldıysa proje bazlı sayılar açılır.
-            boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
-            wb.setSheetOrder(cfg.ebml.enabled && !javaSearch ? EBML_PROJECT_SHEET : "Kullanımlar", 0);
+            // Detaylar ilk açılışta görünsün: Kullanımlar sayfası en başa alınır ve seçili açılır
+            wb.setSheetOrder("Kullanımlar", 0);
             wb.setActiveSheet(0);
             wb.setSelectedTab(0);
             for (int i = 1; i < wb.getNumberOfSheets(); i++) wb.getSheetAt(i).setSelected(false);
@@ -154,7 +148,7 @@ final class ExcelReportWriter {
                 for (RepoResult r : results) perKind[i] += r.count(EBML_KINDS[i]);
                 all += perKind[i];
             }
-            row = kv(s, st, row, "Ekran / popup / region / rapor / process (proje bazlı: '" + EBML_PROJECT_SHEET + "')", all);
+            row = kv(s, st, row, "Ekran / popup / region / rapor / process (detaylar: 'EBML Dosyaları')", all);
             for (int i = 0; i < EBML_KINDS.length; i++) row = kv(s, st, row, "   " + EBML_KINDS[i].label, perKind[i]);
             long un = 0;
             for (RepoResult r : results) un += r.count(EbmlFile.Kind.UNCLASSIFIED);
@@ -421,102 +415,6 @@ final class ExcelReportWriter {
         t.finish();
     }
 
-    // ------------------------------------------------------------------ Proje bazlı envanter
-
-    /** Proje bazlı envanter sayfasında bir satır */
-    private static final class ProjectCount {
-        final String name;
-        final Long id;
-        final String match;
-        final TreeSet<String> repos = new TreeSet<String>();
-        /** EBML_KINDS sırasıyla sayılar, son eleman toplam */
-        final long[] counts = new long[EBML_KINDS.length + 1];
-
-        ProjectCount(EbmlFile e) {
-            this.name = e.projectName;
-            this.id = e.projectId;
-            this.match = e.projectMatch;
-        }
-    }
-
-    /** Proje başına ekran, popup, region, rapor ve process sayıları; en altta toplam satırı */
-    private void ebmlByProject(Workbook wb, Styles st, List<RepoResult> results) {
-        Sheet s = wb.createSheet(EBML_PROJECT_SHEET);
-        boolean db = cfg.db.enabled;
-
-        // Proje: veritabanında eşleştiyse env.project id'si, değilse aranan proje adı
-        Map<String, ProjectCount> byProject = new LinkedHashMap<String, ProjectCount>();
-        TreeSet<String> repos = new TreeSet<String>();
-        for (RepoResult r : results) {
-            for (EbmlFile e : r.ebmlFiles) {
-                if (e.kind == EbmlFile.Kind.UNCLASSIFIED) continue;
-                String key = e.projectId != null ? "#" + e.projectId : "?" + e.projectName.toLowerCase(TR);
-                ProjectCount p = byProject.get(key);
-                if (p == null) {
-                    p = new ProjectCount(e);
-                    byProject.put(key, p);
-                }
-                for (int i = 0; i < EBML_KINDS.length; i++) {
-                    if (EBML_KINDS[i] == e.kind) p.counts[i]++;
-                }
-                p.counts[EBML_KINDS.length]++;
-                p.repos.add(e.repo);
-                repos.add(e.repo);
-            }
-        }
-
-        List<String> headers = new ArrayList<String>(Arrays.asList("Proje Adı"));
-        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(36));
-        if (db) {
-            headers.addAll(Arrays.asList("DB Proje Id", "Proje Eşleşmesi"));
-            widths.addAll(Arrays.asList(12, 20));
-        }
-        headers.add("Repo");
-        widths.add(40);
-        for (EbmlFile.Kind k : EBML_KINDS) {
-            headers.add(k.label);
-            widths.add(12);
-        }
-        headers.add("Toplam");
-        widths.add(10);
-        int[] w = new int[widths.size()];
-        for (int i = 0; i < w.length; i++) w[i] = widths.get(i);
-
-        Table t = new Table(s, st, 0, true, headers.toArray(new String[0]), w);
-        List<ProjectCount> sorted = new ArrayList<ProjectCount>(byProject.values());
-        // Çoktan aza, eşitse ada göre
-        sorted.sort(Comparator.comparingLong((ProjectCount p) -> -p.counts[EBML_KINDS.length])
-                .thenComparing(p -> p.name.toLowerCase(TR)));
-        long[] total = new long[EBML_KINDS.length + 1];
-        for (ProjectCount p : sorted) {
-            Row x = t.row();
-            int c = 0;
-            text(x, c++, p.name);
-            if (db) {
-                if (p.id == null) text(x, c++, ""); else num(x, c++, p.id.longValue());
-                text(x, c++, p.match);
-            }
-            text(x, c++, String.join(", ", p.repos));
-            for (int i = 0; i < total.length; i++) {
-                num(x, c++, p.counts[i]);
-                total[i] += p.counts[i];
-            }
-        }
-        t.finish();
-
-        // Toplam satırı otomatik filtrenin dışında kalsın diye bir satır boşluk bırakılır
-        Row x = s.createRow(t.nextRow() + 1);
-        Cell label = x.createCell(0);
-        label.setCellValue("TOPLAM (" + sorted.size() + " proje, " + repos.size() + " repo)");
-        label.setCellStyle(st.bold);
-        int c = db ? 4 : 2;
-        for (long n : total) {
-            Cell cell = x.createCell(c++);
-            cell.setCellValue(n);
-            cell.setCellStyle(st.bold);
-        }
-    }
-
     // ------------------------------------------------------------------ EBML dosyaları
 
     private void ebmlFiles(Workbook wb, Styles st, List<RepoResult> results) {
@@ -628,11 +526,6 @@ final class ExcelReportWriter {
 
         Row row() {
             return sheet.createRow(next++);
-        }
-
-        /** Tablodan sonraki ilk boş satır */
-        int nextRow() {
-            return next;
         }
 
         void link(Row r, int c, String url) {
