@@ -18,7 +18,7 @@ import java.util.stream.Stream;
  * Repoları sığ (--depth 1) olarak klonlar veya günceller. PATH'te git (2.31+) olmalıdır.
  * Token komut satırına yazılmaz; GIT_CONFIG_* ortam değişkenleriyle iletilir.
  *
- * git.sparse=true (varsayılan) iken sadece taramada okunan dosyalar indirilir (.java, modül dosyaları,
+ * git.sparse=true iken (varsayılan false) sadece taramada okunan dosyalar indirilir (.java, modül dosyaları,
  * EBML açıksa .ebml/.dsxml/processdefinition.xml): blob'suz partial clone + sparse checkout. Sunucu
  * partial clone desteklemiyorsa git normal klona döner; sadece diske yazılan dosyalar azalır.
  */

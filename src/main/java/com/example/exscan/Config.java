@@ -244,7 +244,7 @@ final class Config {
         fallbackCharset = Charset.forName(get(p, "scan.fallback.charset", "windows-1254"));
         threads = Math.max(1, Integer.parseInt(get(p, "threads", "4")));
         gitThreads = Math.max(1, Integer.parseInt(get(p, "git.threads", "8")));
-        gitSparse = Boolean.parseBoolean(get(p, "git.sparse", "true"));
+        gitSparse = Boolean.parseBoolean(get(p, "git.sparse", "false"));
         perProjectReports = Boolean.parseBoolean(get(p, "report.per.project", "true"));
         patterns = UsagePattern.load(p);
         callPatterns = CallPattern.load(p);
