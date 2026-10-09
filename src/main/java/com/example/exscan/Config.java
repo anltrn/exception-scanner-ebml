@@ -333,6 +333,30 @@ final class Config {
         }
     }
 
+    /**
+     * bitbucket.exclude.repos: "repo-slug", "PROJE/repo-slug" veya "*" joker karakterli
+     * kalip ("z_atil_*", "nova-*", "PROJE/test-*"). Buyuk-kucuk harf duyarsiz.
+     */
+    boolean isExcluded(RepoInfo r) {
+        for (String e : excludeRepos) {
+            if (matchesGlob(e, r.slug) || matchesGlob(e, r.id())) return true;
+        }
+        return false;
+    }
+
+    private static boolean matchesGlob(String pattern, String value) {
+        if (value == null) return false;
+        if (pattern.indexOf('*') < 0) return pattern.equalsIgnoreCase(value);
+        StringBuilder rx = new StringBuilder();
+        String[] parts = pattern.split("\\*", -1);
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) rx.append(".*");
+            rx.append(java.util.regex.Pattern.quote(parts[i]));
+        }
+        return java.util.regex.Pattern.compile(rx.toString(), java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(value).matches();
+    }
+
     private static String get(Properties p, String key, String def) {
         String v = p.getProperty(key);
         return v == null || v.trim().isEmpty() ? def : v.trim();
