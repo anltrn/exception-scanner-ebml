@@ -42,6 +42,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,6 +50,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /** Bir reponun Java kaynaklarını ayrıştırıp hedef exception kullanımlarını bulur. */
@@ -73,7 +75,7 @@ final class JavaSourceScanner {
 
     /**
      * Bellek kullanımını düşük tutmak için iki geçişte tarar ve hiçbir dosyanın ayrıştırılmış hâlini saklamaz:
-     * 1. geçiş: "extends" içeren dosyalardan sadece sınıf başlıklarını toplayıp alt sınıfları bulur.
+     * 1. geçiş: "extends" ve aranan sınıflardan birinin adını içeren dosyalardan sınıf başlıklarını toplayıp alt sınıfları bulur.
      * 2. geçiş: sadece aranan sınıf veya metot adlarını metin olarak içeren dosyaları ayrıştırıp kullanımları bulur.
      */
     RepoResult scan(RepoInfo repo) {
@@ -91,53 +93,52 @@ final class JavaSourceScanner {
         }
         result.javaFiles = files.size();
 
-        // JavaParser thread-safe değildir; her repo taramasında yeni örnekler kullanılır.
-        // Önce Java 8 seviyesiyle (Java 6 kodu için en güvenlisi), olmazsa en yeni Java sürümüyle ayrıştırılır.
-        JavaParser legacyParser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_8)
-                .setAttributeComments(false));
-        JavaParser modernParser = new JavaParser(new ParserConfiguration()
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
-                .setAttributeComments(false));
-
-        Map<Path, String> moduleCache = new HashMap<Path, String>();
+        Map<Path, String> moduleCache = new ConcurrentHashMap<Path, String>();
         long maxBytes = cfg.maxFileKb * 1024L;
-        Set<Path> skipped = new HashSet<Path>();
-
-        // ---- 1. geçiş: sınıf başlıkları
-        List<ClassHeader> headers = new ArrayList<ClassHeader>();
+        List<Path> scannable = new ArrayList<Path>(files.size());
         for (Path f : files) {
-            String rel = relative(root, f);
             try {
                 long size = Files.size(f);
                 if (size > maxBytes) {
-                    skipped.add(f);
-                    result.errors.add(new ScanError(repo, "ATLANDI", rel, "Dosya çok büyük (" + (size / 1024)
-                            + " KB). Sınırı scan.max.file.kb ayarıyla değiştirebilirsiniz."));
+                    result.errors.add(new ScanError(repo, "ATLANDI", relative(root, f), "Dosya çok büyük ("
+                            + (size / 1024) + " KB). Sınırı scan.max.file.kb ayarıyla değiştirebilirsiniz."));
                     continue;
                 }
-                String source = readSource(f);
-                if (!source.contains("extends")) continue;
-                ParseResult<CompilationUnit> pr = parse(source, legacyParser, modernParser);
-                if (!pr.getResult().isPresent()) continue;
-                CompilationUnit cu = pr.getResult().get();
-                ImportContext ctx = ImportContext.of(cu);
-                for (ClassOrInterfaceDeclaration cd : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-                    if (cd.isInterface() || cd.getExtendedTypes().isEmpty()) continue;
-                    ClassHeader h = new ClassHeader();
-                    h.file = f;
-                    h.fqn = fqnOf(cd, cu);
-                    h.line = cd.getBegin().map(p -> p.line).orElse(0);
-                    h.ctx = ctx;
-                    for (ClassOrInterfaceType ext : cd.getExtendedTypes()) h.extendsWritten.add(ext.getNameWithScope());
-                    headers.add(h);
-                }
-            } catch (IOException | RuntimeException e) {
-                // okuma/ayrıştırma hataları 2. geçişte raporlanır
+            } catch (IOException e) {
+                // okuma hatası 2. geçişte raporlanır
             }
+            scannable.add(f);
         }
-        Set<String> targets = resolveTargets(repo, root, headers, result, moduleCache);
-        headers.clear();
+
+        // ---- 1. geçiş: aranan sınıfların alt sınıfları.
+        // "class X extends Y" ile Y'ye bağlanabilmek için dosyada Y'nin adı geçmek zorundadır. Bu yüzden
+        // "extends" içeren dosyalar bir kez okunup içlerindeki isimlerin dizini çıkarılır; sadece bilinen
+        // hedeflerden birinin adını içeren dosyalar ayrıştırılır. Yeni alt sınıf bulundukça onların adlarıyla
+        // dizine tekrar bakılır (X'ten türeyenler için). Sonuç tüm dosyaları ayrıştırmakla aynıdır.
+        Set<String> targets = new LinkedHashSet<String>(cfg.exceptionClasses);
+        if (!targets.isEmpty()) {
+            Map<String, List<Integer>> index = identifierIndex(scannable);
+            List<ClassHeader> headers = new ArrayList<ClassHeader>();
+            Set<Integer> parsed = new HashSet<Integer>();
+            Set<String> searchedNames = new HashSet<String>();
+            while (true) {
+                java.util.TreeSet<Integer> candidates = new java.util.TreeSet<Integer>();
+                for (String t : targets) {
+                    String n = TypeMatcher.simpleName(t);
+                    if (!searchedNames.add(n)) continue;
+                    List<Integer> hits = index.get(n);
+                    if (hits != null) for (Integer i : hits) if (parsed.add(i)) candidates.add(i);
+                }
+                if (candidates.isEmpty()) break;
+                List<Path> batch = new ArrayList<Path>(candidates.size());
+                for (Integer i : candidates) batch.add(scannable.get(i));
+                List<ClassHeader> found = parallel(batch, f -> classHeaders(f, readSource(f)));
+                headers.addAll(found);
+                resolveTargets(repo, root, headers, targets, result, moduleCache);
+            }
+            result.subclasses.sort(Comparator.comparing((SubclassFinding sf) -> sf.file)
+                    .thenComparingInt(sf -> sf.line));
+        }
 
         // Kullanım içerebilecek dosyaları ayrıştırmadan önce metin olarak ayıklamak için anahtar kelimeler
         Set<String> keywords = new LinkedHashSet<String>();
@@ -146,33 +147,146 @@ final class JavaSourceScanner {
         List<String> configuredNames = new ArrayList<String>();
         for (String c : cfg.exceptionClasses) configuredNames.add(TypeMatcher.simpleName(c));
 
-        // ---- 2. geçiş: kullanımlar
-        for (Path f : files) {
-            if (skipped.contains(f)) continue;
+        // ---- 2. geçiş: kullanımlar. Dosyalar paralel ayrıştırılır; her dosyanın sonucu ayrı toplanıp birleştirilir.
+        final Set<String> finalTargets = targets;
+        List<RepoResult> parts = parallel(scannable, f -> {
+            RepoResult part = new RepoResult(repo);
             String rel = relative(root, f);
             try {
                 String source = readSource(f);
-                if (containsAny(source, configuredNames)) result.filesMentioningTarget++;
-                if (!containsAny(source, keywords)) continue;
+                if (containsAny(source, configuredNames)) part.filesMentioningTarget++;
+                if (!containsAny(source, keywords)) return part.filesMentioningTarget > 0 ? part : null;
 
-                ParseResult<CompilationUnit> pr = parse(source, legacyParser, modernParser);
+                ParseResult<CompilationUnit> pr = parse(source);
                 if (!pr.isSuccessful()) {
-                    result.parseFailures++;
+                    part.parseFailures++;
                     String msg = pr.getProblems().isEmpty() ? "Ayrıştırılamadı" : pr.getProblem(0).getVerboseMessage();
-                    result.errors.add(new ScanError(repo, "PARSE", rel, BitbucketClient.abbreviate(msg, 400)));
+                    part.errors.add(new ScanError(repo, "PARSE", rel, BitbucketClient.abbreviate(msg, 400)));
                 }
-                if (!pr.getResult().isPresent()) continue;
-                String module = moduleOf(root, f.getParent(), moduleCache);
-                scanUnit(pr.getResult().get(), repo, rel, module, TEST_PATH.matcher(rel).matches(), targets, result);
+                if (pr.getResult().isPresent()) {
+                    String module = moduleOf(root, f.getParent(), moduleCache);
+                    scanUnit(pr.getResult().get(), repo, rel, module, TEST_PATH.matcher(rel).matches(), finalTargets, part);
+                }
             } catch (IOException | RuntimeException e) {
-                result.parseFailures++;
-                result.errors.add(new ScanError(repo, "OKUMA", rel, String.valueOf(e.getMessage())));
+                part.parseFailures++;
+                part.errors.add(new ScanError(repo, "OKUMA", rel, String.valueOf(e.getMessage())));
             }
+            return part;
+        });
+        for (RepoResult part : parts) {
+            result.filesMentioningTarget += part.filesMentioningTarget;
+            result.parseFailures += part.parseFailures;
+            result.usages.addAll(part.usages);
+            result.catches.addAll(part.catches);
+            result.errors.addAll(part.errors);
         }
 
         Collections.sort(result.usages, (a, b) -> a.file.equals(b.file)
                 ? Integer.compare(a.line, b.line) : a.file.compareTo(b.file));
         return result;
+    }
+
+    /**
+     * "extends" içeren dosyalardaki isimlerin (Java tanımlayıcıları) dizini: isim -> dosya sıraları.
+     * Dosyalar paralel ve sadece bir kez okunur; dosya içerikleri bellekte tutulmaz.
+     */
+    private Map<String, List<Integer>> identifierIndex(List<Path> files) {
+        Object[] tokens = new Object[files.size()];
+        java.util.stream.IntStream.range(0, files.size()).parallel().forEach(i -> {
+            try {
+                String source = readSource(files.get(i));
+                tokens[i] = source.contains("extends") ? identifiers(source) : null;
+            } catch (IOException | RuntimeException e) {
+                tokens[i] = null; // okuma hatası 2. geçişte raporlanır
+            }
+        });
+        Map<String, List<Integer>> index = new HashMap<String, List<Integer>>();
+        for (int i = 0; i < tokens.length; i++) {
+            if (tokens[i] == null) continue;
+            @SuppressWarnings("unchecked")
+            Set<String> ids = (Set<String>) tokens[i];
+            for (String id : ids) index.computeIfAbsent(id, k -> new ArrayList<Integer>(2)).add(i);
+            tokens[i] = null;
+        }
+        return index;
+    }
+
+    /** Metindeki farklı Java tanımlayıcıları ("a.b.Foo" -> a, b, Foo) */
+    private static Set<String> identifiers(String text) {
+        Set<String> out = new HashSet<String>();
+        int n = text.length();
+        int i = 0;
+        while (i < n) {
+            if (Character.isJavaIdentifierStart(text.charAt(i))) {
+                int start = i++;
+                while (i < n && Character.isJavaIdentifierPart(text.charAt(i))) i++;
+                out.add(text.substring(start, i));
+            } else {
+                i++;
+            }
+        }
+        return out;
+    }
+
+    /** Bir dosyadaki sınıf başlıkları (extends yazılan sınıflar) */
+    private List<ClassHeader> classHeaders(Path f, String source) {
+        List<ClassHeader> out = new ArrayList<ClassHeader>();
+        ParseResult<CompilationUnit> pr = parse(source);
+        if (!pr.getResult().isPresent()) return out;
+        CompilationUnit cu = pr.getResult().get();
+        ImportContext ctx = ImportContext.of(cu);
+        for (ClassOrInterfaceDeclaration cd : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+            if (cd.isInterface() || cd.getExtendedTypes().isEmpty()) continue;
+            ClassHeader h = new ClassHeader();
+            h.file = f;
+            h.fqn = fqnOf(cd, cu);
+            h.line = cd.getBegin().map(p -> p.line).orElse(0);
+            h.ctx = ctx;
+            for (ClassOrInterfaceType ext : cd.getExtendedTypes()) h.extendsWritten.add(ext.getNameWithScope());
+            out.add(h);
+        }
+        return out;
+    }
+
+    private interface FileTask<T> {
+        /** null dönerse sonuca eklenmez; liste dönerse elemanları eklenir */
+        Object apply(Path f) throws IOException;
+    }
+
+    /**
+     * Dosyaları paralel işler (ortak ForkJoin havuzunda; toplam işlemci kullanımı çekirdek sayısıyla
+     * sınırlı kalır). Sonuçlar dosya sırasıyla döner. Okuma/ayrıştırma hatası olan dosya atlanır.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> List<T> parallel(List<Path> files, FileTask<T> task) {
+        Object[] slots = new Object[files.size()];
+        java.util.stream.IntStream.range(0, files.size()).parallel().forEach(i -> {
+            try {
+                slots[i] = task.apply(files.get(i));
+            } catch (IOException | RuntimeException e) {
+                slots[i] = null;
+            }
+        });
+        List<T> out = new ArrayList<T>();
+        for (Object o : slots) {
+            if (o == null) continue;
+            if (o instanceof List) out.addAll((List<T>) o);
+            else out.add((T) o);
+        }
+        return out;
+    }
+
+    /** JavaParser thread-safe değildir; her iş parçacığı kendi örneklerini kullanır. */
+    private static final ThreadLocal<JavaParser> LEGACY = ThreadLocal.withInitial(() -> new JavaParser(
+            new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_8)
+                    .setAttributeComments(false)));
+    private static final ThreadLocal<JavaParser> MODERN = ThreadLocal.withInitial(() -> new JavaParser(
+            new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
+                    .setAttributeComments(false)));
+
+    /** Önce Java 8 seviyesiyle (Java 6 kodu için en güvenlisi), olmazsa en yeni Java sürümüyle ayrıştırır. */
+    private static ParseResult<CompilationUnit> parse(String source) {
+        return parse(source, LEGACY.get(), MODERN.get());
     }
 
     private static ParseResult<CompilationUnit> parse(String source, JavaParser legacy, JavaParser modern) {
@@ -298,10 +412,9 @@ final class JavaSourceScanner {
      * Ayarlardaki sınıflara, bu repoda onlardan türeyen alt sınıfları da ekler (alt sınıfın alt sınıfı dahil).
      * Yeni yapıya ait olup exception.ignore.classes'a yazılan sınıflar hariç tutulur.
      */
-    private Set<String> resolveTargets(RepoInfo repo, Path root, List<ClassHeader> headers,
-                                       RepoResult result, Map<Path, String> moduleCache) {
-        Set<String> targets = new LinkedHashSet<String>(cfg.exceptionClasses);
-        if (targets.isEmpty()) return targets;
+    /** Başlıklardan hedeflerin alt sınıflarını bulup targets'a ekler (zincirleme alt sınıflar dahil). */
+    private void resolveTargets(RepoInfo repo, Path root, List<ClassHeader> headers, Set<String> targets,
+                                RepoResult result, Map<Path, String> moduleCache) {
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -330,7 +443,6 @@ final class JavaSourceScanner {
                 }
             }
         }
-        return targets;
     }
 
     // ------------------------------------------------------------------ konum bilgileri
