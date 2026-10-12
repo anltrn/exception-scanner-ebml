@@ -171,6 +171,7 @@ final class Config {
         final String usageTable;
         final String typeTable;
         final String runTable;
+        final String errorTable;
         final boolean caseInsensitive;
         final List<String> constructorNames;
         final boolean insertUnmatched;
@@ -196,6 +197,7 @@ final class Config {
             usageTable = ident(get(p, "db.usage.table", schema + ".exception_usage"), "db.usage.table");
             typeTable = ident(get(p, "db.usage.type.table", schema + ".exception_usage_type"), "db.usage.type.table");
             runTable = ident(get(p, "db.run.table", schema + ".exception_scan_run"), "db.run.table");
+            errorTable = ident(get(p, "db.error.table", schema + ".exception_scan_error"), "db.error.table");
             caseInsensitive = Boolean.parseBoolean(get(p, "db.fqcn.case.insensitive", "false"));
             constructorNames = list(get(p, "db.method.constructor.names", "<init>,{class}"));
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));

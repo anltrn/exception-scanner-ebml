@@ -95,6 +95,33 @@ CREATE INDEX IF NOT EXISTS ix_exception_usage_method ON env.exception_usage (met
 CREATE INDEX IF NOT EXISTS ix_exception_usage_type   ON env.exception_usage (usage_type_code);
 
 -- ---------------------------------------------------------------------
+--  Tarama sırasında karşılaşılan hatalar (Excel'deki "Tarama Hataları"
+--  sayfasının karşılığı). Kullanımlarla aynı transaction'da yazılır.
+--  stage:
+--    KLONLAMA         repo klonlanamadı / güncellenemedi (repo hiç taranmadı)
+--    TARAMA           repo taranırken beklenmeyen hata
+--    BELLEK           repo için bellek yetmedi
+--    DOSYA_LISTELEME  repodaki dosyalar listelenemedi
+--    EBML_LISTELEME   EBML / rapor / process dosyaları listelenemedi
+--    PARSE            Java dosyası ayrıştırılamadı (kısmen taranmış olabilir)
+--    OKUMA            dosya okunamadı
+--    ATLANDI          dosya scan.max.file.kb sınırından büyük, taranmadı
+--    PROCESS_LABEL    processdefinition.xml okunamadı
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS env.exception_scan_error (
+    id           bigserial     PRIMARY KEY,
+    scan_run_id  bigint        NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    project_key  varchar(100),
+    repo         varchar(200),
+    stage        varchar(30)   NOT NULL,
+    file_path    varchar(1000),                        -- dosya bazlı hatalarda repo içindeki yol
+    message      text,
+    created_at   timestamptz   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_exception_scan_error_run ON env.exception_scan_error (scan_run_id, stage);
+
+-- ---------------------------------------------------------------------
 --  Görünümler
 -- ---------------------------------------------------------------------
 
@@ -103,6 +130,7 @@ CREATE INDEX IF NOT EXISTS ix_exception_usage_type   ON env.exception_usage (usa
 DROP VIEW IF EXISTS env.v_exception_usage_summary;
 DROP VIEW IF EXISTS env.v_exception_usage_trend;
 DROP VIEW IF EXISTS env.v_exception_usage_latest;
+DROP VIEW IF EXISTS env.v_exception_scan_error_latest;
 
 -- Son taramanın kullanımları, sınıf ve metot bilgileriyle
 CREATE VIEW env.v_exception_usage_latest AS
@@ -139,6 +167,16 @@ SELECT r.id          AS scan_run_id,
  WHERE r.finished_at IS NOT NULL
  GROUP BY r.id, r.started_at, u.project_key, u.usage_type_code;
 
+-- Son taramanın hataları
+CREATE VIEW env.v_exception_scan_error_latest AS
+SELECT e.*
+  FROM env.exception_scan_error e
+ WHERE e.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE finished_at IS NOT NULL);
+
+-- Örnek: son taramada repo ve hata türüne göre hata sayıları
+--   SELECT project_key, repo, stage, count(*) FROM env.v_exception_scan_error_latest
+--    GROUP BY project_key, repo, stage ORDER BY count(*) DESC;
+
 -- Örnek sorgu: son taramadaki eski kullanımlar, sınıf ve metot envanteriyle.
 -- id'ler envanter yeniden yüklenince değişebileceği için sınıf adıyla ve metot adıyla
 -- (imzanın "(" öncesi) eşleştirilir.
@@ -150,5 +188,5 @@ SELECT r.id          AS scan_run_id,
 --    WHERE u.is_legacy
 --    ORDER BY c.fqcn, u.line_no;
 
--- Eski taramaları temizlemek için (kullanımlar CASCADE ile silinir):
+-- Eski taramaları temizlemek için (kullanımlar ve hatalar CASCADE ile silinir):
 --   DELETE FROM env.exception_scan_run WHERE started_at < now() - interval '180 days';

@@ -98,7 +98,7 @@ class ScanController {
     }
 
     @GetMapping("/api/scans/{id}/files")
-    @Operation(summary = "Rapor dosyaları", description = "Ana rapor, CSV, proje bazlı raporlar ve log")
+    @Operation(summary = "Rapor dosyaları", description = "Ana rapor, proje bazlı raporlar ve log")
     List<ScanJobService.ReportFile> files(@PathVariable String id) throws IOException {
         return service.files(id);
     }
@@ -134,7 +134,6 @@ class ScanController {
         String name = f.getFileName().toString();
         MediaType type = name.endsWith(".xlsx")
                 ? MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                : name.endsWith(".csv") ? MediaType.parseMediaType("text/csv;charset=UTF-8")
                 : name.endsWith(".log") ? MediaType.parseMediaType("text/plain;charset=UTF-8")
                 : MediaType.APPLICATION_OCTET_STREAM;
         return ResponseEntity.ok()
