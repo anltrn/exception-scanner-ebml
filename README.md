@@ -419,6 +419,10 @@ Notlar:
 - Repolar projeler arasında sırayla dağıtılır (A1, B1, C1, D1, E1, A2, ...). Böylece repo sayısı çok olan bir proje diğerlerini bekletmez, beş proje aynı anda ilerler.
 - Klonlama ve ayrıştırma ayrı işçi havuzlarında çalışır. `git.threads` (varsayılan 8) aynı anda klonlanan/güncellenen repo sayısıdır; ağ işi olduğu için yüksek tutulabilir. `threads` (varsayılan 4) aynı anda ayrıştırılan repo sayısıdır; işlemci ve bellek kullandığı için düşük tutulur. Bir repo klonlanır klonlanmaz ayrıştırmaya geçer, bu sırada diğer repolar çekilmeye devam eder.
 
+Büyük repolar da kendi içinde paralel taranır: bir reponun Java dosyaları işlemci çekirdekleri arasında paylaştırılarak ayrıştırılır. Bu yüzden binlerce dosyalı tek bir repo, diğer repolar bittikten sonra tek başına uzun süre çalışmaz. Aranan exception'ın alt sınıfları bulunurken de tüm dosyalar değil, sadece o exception'ın (veya bulunan alt sınıflarının) adını içeren dosyalar ayrıştırılır.
+
+Dosya ayrıştırma zaten tüm çekirdekleri kullandığı için `threads` değerini çekirdek sayısından çok yüksek vermek taramayı hızlandırmaz; sadece bellek kullanımını artırır. Çekirdek sayısı kadar (OpenShift'te CPU limiti kadar) vermeniz yeterlidir. `git.threads` ağ işi olduğu için daha yüksek tutulabilir.
+
 Repolar `work.dir` altında saklandığı için ilk taramadan sonraki taramalarda sadece değişiklikler çekilir ve tarama çok daha hızlı biter. `git.threads` değerini Bitbucket sunucusunu zorlamayacak kadar tutun.
 
 ### Sadece gerekli dosyaların indirilmesi
