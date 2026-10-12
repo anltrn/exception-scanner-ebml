@@ -140,11 +140,16 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
         final List<String> existing = new ArrayList<String>();
     }
 
-    InsertResult insert(List<RepoResult> results) throws SQLException {
+    /**
+     * @param startedAt taramanın gerçekten başladığı an (env.exception_scan_run.started_at). Kayıtlar tek
+     *                  transaction'da yazıldığı için started_at veritabanındaki now() ile doldurulamaz:
+     *                  now() transaction'ın başlangıcını döndürür.
+     */
+    InsertResult insert(List<RepoResult> results, java.time.Instant startedAt) throws SQLException {
         try {
             upsertTypes();
             InsertResult ir = new InsertResult();
-            ir.runId = insertRun(results);
+            ir.runId = insertRun(results, startedAt);
 
             String sql = "INSERT INTO " + db.usageTable + " (scan_run_id, class_id, method_id, usage_type_code,"
                     + " match_status, match_note, project_key, repo, module, file_path, line_no, class_fqcn,"
@@ -199,7 +204,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
 
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
-                    + " SET finished_at = now(), usage_count = ?"
+                    + " SET finished_at = clock_timestamp(), usage_count = ?"
                     + (cfg.ebml.enabled ? ", screen_count = ?, popup_count = ?, region_count = ?, report_count = ?,"
                     + " process_count = ?" : "")
                     + " WHERE id = ?");
@@ -633,21 +638,22 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
         }
     }
 
-    private long insertRun(List<RepoResult> results) throws SQLException {
+    private long insertRun(List<RepoResult> results, java.time.Instant startedAt) throws SQLException {
         int javaFiles = 0;
         for (RepoResult r : results) javaFiles += r.javaFiles;
         String sql = "INSERT INTO " + db.runTable
-                + " (source, repo_count, java_file_count, exception_classes, note, run_by, host)"
-                + " VALUES (?,?,?,?,?,?,?) RETURNING id";
+                + " (started_at, source, repo_count, java_file_count, exception_classes, note, run_by, host)"
+                + " VALUES (?,?,?,?,?,?,?,?) RETURNING id";
         PreparedStatement ps = con.prepareStatement(sql);
         try {
-            ps.setString(1, cfg.source.name());
-            ps.setInt(2, results.size());
-            ps.setInt(3, javaFiles);
-            ps.setString(4, String.join(",", cfg.exceptionClasses));
-            ps.setString(5, db.note.isEmpty() ? null : db.note);
-            ps.setString(6, cut(System.getProperty("user.name"), 100));
-            ps.setString(7, cut(hostName(), 200));
+            ps.setObject(1, java.time.OffsetDateTime.ofInstant(startedAt, java.time.ZoneOffset.UTC));
+            ps.setString(2, cfg.source.name());
+            ps.setInt(3, results.size());
+            ps.setInt(4, javaFiles);
+            ps.setString(5, String.join(",", cfg.exceptionClasses));
+            ps.setString(6, db.note.isEmpty() ? null : db.note);
+            ps.setString(7, cut(System.getProperty("user.name"), 100));
+            ps.setString(8, cut(hostName(), 200));
             ResultSet rs = ps.executeQuery();
             try {
                 rs.next();

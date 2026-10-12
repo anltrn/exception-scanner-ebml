@@ -212,6 +212,7 @@ public final class ScannerApp {
      * @return özet sayılar (repo, Java dosyası, kullanım, hata sayısı ve rapor klasörü)
      */
     static Map<String, Object> scan(final Config cfg, Path outDir) throws Exception {
+        final java.time.Instant startedAt = java.time.Instant.now();
         Map<String, Object> summary = new java.util.LinkedHashMap<String, Object>();
         log("Kaynak: " + cfg.source + " | Aranan sınıflar: "
                 + (cfg.exceptionClasses.isEmpty() ? "-" : String.join(", ", cfg.exceptionClasses)));
@@ -327,7 +328,7 @@ public final class ScannerApp {
                 if (cfg.db.dryRun) {
                     log("Veritabanı: deneme modu (--db-dry-run), kayıt yapılmadı.");
                 } else {
-                    PostgresExporter.InsertResult ir = pg.insert(results);
+                    PostgresExporter.InsertResult ir = pg.insert(results, startedAt);
                     log("Veritabanı: " + ir.inserted + " kullanım " + cfg.db.usageTable + " tablosuna yazıldı"
                             + " (scan_run_id=" + ir.runId + ")"
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");
