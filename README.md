@@ -108,7 +108,6 @@ Bulunan kullanımlar (varsayılan olarak ilk 200 tanesi) dosya, satır, sınıf,
 `output.dir/yyyyMMdd_HHmm/` altında:
 
 - `exception_scan_report.xlsx`: tüm projeleri içeren ana rapor (açılışta Kullanımlar sayfası görünür)
-- `usages.csv`: aynı kullanım listesi, her programda açılabilen CSV olarak (noktalı virgül ayraçlı, UTF-8)
 - `projects/report_<PROJE>.xlsx`: her Bitbucket projesi için ayrı rapor, doğrudan ilgili ekibe gönderilebilir
 
 Her raporda şu sayfalar bulunur (Excel'de sekmeler pencerenin altında, Numbers'da üstündedir):
@@ -192,16 +191,20 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 
 ### Kurulum
 
-`sql/exception_usage_postgres.sql` dosyasını veritabanında bir kez çalıştırın. Üç tablo ve üç görünüm oluşturur:
+`sql/exception_usage_postgres.sql` dosyasını veritabanında bir kez çalıştırın. Dört tablo ve dört görünüm oluşturur:
 
 | Nesne | İçerik |
 |---|---|
 | `env.exception_usage_type` | Kullanım tipleri (desenlerin karşılığı). Tarayıcı her çalışmada ayar dosyasındaki desenlerle günceller |
 | `env.exception_scan_run` | Her tarama çalıştırması bir kayıt |
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
+| `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |
 | `env.v_exception_usage_summary` | Son tarama, proje ve tipe göre sayılar |
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |
+| `env.v_exception_scan_error_latest` | Son taramanın hataları |
+
+Daha önce kurulum yaptıysanız dosyayı tekrar çalıştırmanız yeterli; mevcut tablolara dokunmaz, sadece eksik olanları ekler. `env.exception_scan_error` tablosu yoksa tarama yine kullanımları yazar, hatalar için logda uyarı verir.
 
 Mevcut tablolarınızın sütun adları farklıysa hem SQL dosyasındaki `REFERENCES` satırlarını hem de `db.*` ayarlarını güncelleyin.
 
@@ -328,7 +331,7 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 | `GET /api/scans`, `GET /api/scans/{id}` | Taramalar ve durumu: `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED` |
 | `GET /api/scans/{id}/log` | Tarama logu (sürerken de okunabilir, `?tail=50`) |
 | `GET /api/scans/{id}/report` | Ana Excel raporu |
-| `GET /api/scans/{id}/files`, `.../files/download?path=...` | CSV ve proje bazlı raporlar |
+| `GET /api/scans/{id}/files`, `.../files/download?path=...` | Proje bazlı raporlar ve tarama logu |
 | `DELETE /api/scans/{id}` | Sıradaki taramayı iptal eder veya biten taramayı raporlarıyla siler |
 | `GET /api/settings` | Sunucudaki temel ayarlar (token ve şifreler maskeli) |
 | `/actuator/health/liveness`, `/actuator/health/readiness` | Sağlık kontrolleri |

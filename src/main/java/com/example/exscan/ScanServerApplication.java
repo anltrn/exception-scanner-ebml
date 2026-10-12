@@ -25,7 +25,7 @@ import java.util.List;
         info = @Info(title = "Exception Kullanım Tarayıcı",
                 version = "1.0.0",
                 description = "Bitbucket, git adresi veya yerel klasördeki Java kodunda exception ve metot çağrısı "
-                        + "kullanımlarını tarar; Excel/CSV raporu üretir. Taramalar sırayla, arka planda çalışır: "
+                        + "kullanımlarını tarar; Excel raporu üretir. Taramalar sırayla, arka planda çalışır: "
                         + "POST /api/scans ile başlatın, GET /api/scans/{id} ile durumu izleyin, raporu "
                         + "GET /api/scans/{id}/report ile indirin. Ayrıca haftada bir sunucudaki ayarlarla "
                         + "otomatik tarama yapılır (GET /api/schedule)."),

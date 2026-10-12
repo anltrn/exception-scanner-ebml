@@ -298,8 +298,6 @@ public final class ScannerApp {
         Path master = outDir.resolve("exception_scan_report.xlsx");
         writer.write(master, "Exception Kullanım Taraması - Tüm Projeler", results);
         log("Ana rapor: " + master.toAbsolutePath());
-        Path csv = outDir.resolve("usages.csv");
-        CsvReportWriter.write(csv, results);
 
         if (cfg.perProjectReports) {
             Map<String, List<RepoResult>> byProject = new TreeMap<String, List<RepoResult>>();
@@ -321,7 +319,6 @@ public final class ScannerApp {
 
         printFindings(results, cfg.consoleLimit);
         log("Detaylı Excel raporu: " + master.toAbsolutePath() + "  (detaylar 'Kullanımlar' sayfasında)");
-        log("CSV: " + csv.toAbsolutePath());
 
         if (pg != null) {
             try {
@@ -332,6 +329,10 @@ public final class ScannerApp {
                     log("Veritabanı: " + ir.inserted + " kullanım " + cfg.db.usageTable + " tablosuna yazıldı"
                             + " (scan_run_id=" + ir.runId + ")"
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");
+                    log(ir.errors < 0
+                            ? "Uyarı: " + cfg.db.errorTable + " tablosu yok, tarama hataları veritabanına yazılmadı "
+                                    + "(sql/exception_usage_postgres.sql dosyasını tekrar çalıştırın)."
+                            : "Veritabanı: " + ir.errors + " tarama hatası " + cfg.db.errorTable + " tablosuna yazıldı.");
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0

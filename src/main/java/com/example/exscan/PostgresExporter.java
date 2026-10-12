@@ -136,6 +136,8 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
         int reports;
         int processes;
         int ebmlSkipped;
+        /** env.exception_scan_error'a yazılan hata sayısı; tablo yoksa -1 */
+        int errors;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         final List<String> existing = new ArrayList<String>();
     }
@@ -202,6 +204,7 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
 
             if (cfg.ebml.enabled) insertEbml(results, ir);
             if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
+            ir.errors = insertErrors(results, ir.runId);
 
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = clock_timestamp(), usage_count = ?"
@@ -621,6 +624,40 @@ final class PostgresExporter implements DbCatalog, AutoCloseable {
             }
         }
         return notFound;
+    }
+
+    /**
+     * Tarama hatalarını yazar. Tablo henüz oluşturulmamışsa (SQL dosyası yeni sürümle çalıştırılmamışsa)
+     * kullanımların yazılması engellenmesin diye atlanır ve -1 döner.
+     */
+    private int insertErrors(List<RepoResult> results, long runId) throws SQLException {
+        if (!exists(db.errorTable)) return -1;
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.errorTable
+                + " (scan_run_id, project_key, repo, stage, file_path, message) VALUES (?,?,?,?,?,?)");
+        int count = 0;
+        try {
+            int pending = 0;
+            for (RepoResult r : results) {
+                for (ScanError e : r.errors) {
+                    ps.setLong(1, runId);
+                    ps.setString(2, cut(e.projectKey, 100));
+                    ps.setString(3, cut(e.repo, 200));
+                    ps.setString(4, cut(e.stage, 30));
+                    ps.setString(5, e.file.isEmpty() ? null : cut(e.file, 1000));
+                    ps.setString(6, e.message);
+                    ps.addBatch();
+                    count++;
+                    if (++pending >= BATCH) {
+                        ps.executeBatch();
+                        pending = 0;
+                    }
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+        return count;
     }
 
     private boolean exists(String table) throws SQLException {
