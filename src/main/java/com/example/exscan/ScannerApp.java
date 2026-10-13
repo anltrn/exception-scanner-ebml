@@ -1,5 +1,25 @@
 package com.example.exscan;
 
+import com.example.exscan.config.Config;
+import com.example.exscan.db.DbMatcher;
+import com.example.exscan.db.PostgresExporter;
+import com.example.exscan.model.EbmlFile;
+import com.example.exscan.model.RepoInfo;
+import com.example.exscan.model.RepoResult;
+import com.example.exscan.model.ScanError;
+import com.example.exscan.model.UsageFinding;
+import com.example.exscan.repo.BitbucketClient;
+import com.example.exscan.repo.GitRunner;
+import com.example.exscan.repo.GitUrlRepos;
+import com.example.exscan.repo.LocalRepos;
+import com.example.exscan.report.ExcelReportWriter;
+import com.example.exscan.scan.CallPattern;
+import com.example.exscan.scan.EbmlScanner;
+import com.example.exscan.scan.JavaSourceScanner;
+import com.example.exscan.scan.TypeMatcher;
+import com.example.exscan.scan.UsagePattern;
+import com.example.exscan.server.ScanServerApplication;
+
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
@@ -73,8 +93,8 @@ public final class ScannerApp {
             "       --class com.firma.framework.CustomException --pattern 0,STRING,*");
 
     /** Komut satırı parametrelerinin ayrıştırılmış hali */
-    static final class Args {
-        final Properties overrides = new Properties();
+    public static final class Args {
+        public final Properties overrides = new Properties();
         String cfgFile;
         boolean help;
     }
@@ -104,7 +124,7 @@ public final class ScannerApp {
      * Komut satırı parametrelerini ayar değerlerine çevirir. Sunucu modu da tarama isteklerini
      * aynı parametrelere çevirip buradan geçirir.
      */
-    static Args parseArgs(String[] args) {
+    public static Args parseArgs(String[] args) {
         Args parsed = new Args();
         Properties overrides = parsed.overrides;
         String cfgFile = null;
@@ -211,7 +231,7 @@ public final class ScannerApp {
      *
      * @return özet sayılar (repo, Java dosyası, kullanım, hata sayısı ve rapor klasörü)
      */
-    static Map<String, Object> scan(final Config cfg, Path outDir) throws Exception {
+    public static Map<String, Object> scan(final Config cfg, Path outDir) throws Exception {
         final java.time.Instant startedAt = java.time.Instant.now();
         Map<String, Object> summary = new java.util.LinkedHashMap<String, Object>();
         log("Kaynak: " + cfg.source + " | Aranan sınıflar: "
@@ -608,9 +628,9 @@ public final class ScannerApp {
     }
 
     /** Sunucu modunda tarama loglarını işin log dosyasına da yazmak için (aynı anda tek tarama çalışır) */
-    static volatile java.util.function.Consumer<String> logListener;
+    public static volatile java.util.function.Consumer<String> logListener;
 
-    static synchronized void log(String msg) {
+    public static synchronized void log(String msg) {
         String line = "[" + new SimpleDateFormat("HH:mm:ss").format(new Date()) + "] " + msg;
         System.out.println(line);
         java.util.function.Consumer<String> l = logListener;

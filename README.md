@@ -463,3 +463,18 @@ Hiç sonuç çıkmazsa tarayıcı, konsolun sonunda nedenini açıklar: hiç Jav
 Mesajı bir değişkenden gelen kullanımlarda (`VAR`) mesajın ne olduğu çalışma zamanında belli olur, bunlar kod okunarak incelenmelidir. Aynı şekilde id bir değişken veya sabitten geliyorsa (`new CustomException(SIFIR, "...")`) `0` deseni bunu yakalamaz; gerekirse `CONST,STRING` gibi ek bir desen tanımlayın.
 
 Dosyalar önce UTF-8 olarak okunur; geçersiz karakter varsa `scan.fallback.charset` (varsayılan windows-1254) kullanılır. Eski projelerdeki Türkçe karakterler bozuk görünürse bu ayarı ISO-8859-9 olarak deneyin.
+
+## Kod yapısı
+
+Kaynaklar `src/main/java/com/example/exscan` altında, sorumluluğa göre paketlere ayrılmıştır:
+
+| Paket | İçerik |
+|---|---|
+| (kök) | `ScannerApp`: komut satırı girişi (jar'ın ana sınıfı) ve tarama akışı |
+| `config` | `Config`: `scanner.properties` ve komut satırı değerlerinin okunması |
+| `model` | Repo bilgisi, tarama sonucu ve bulgular: `RepoInfo`, `RepoResult`, `UsageFinding`, `CatchFinding`, `SubclassFinding`, `EbmlFile`, `ScanError` ... |
+| `repo` | Repo listesini alma ve klonlama: `BitbucketClient`, `GitUrlRepos`, `LocalRepos`, `GitRunner` |
+| `scan` | Java ve EBML dosyalarının taranması, desen eşleştirme: `JavaSourceScanner`, `EbmlScanner`, `UsagePattern`, `CallPattern`, `ArgumentClassifier`, `TypeMatcher` ... |
+| `db` | PostgreSQL envanteriyle eşleştirme ve kayıt: `DbMatcher`, `PostgresExporter` |
+| `report` | Excel raporu: `ExcelReportWriter` |
+| `server` | REST API ve Swagger (Spring Boot): `ScanServerApplication`, `ScanController`, `ScanJobService`, haftalık tarama ... |
