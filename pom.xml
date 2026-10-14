@@ -13,7 +13,7 @@
     </parent>
 
     <groupId>com.example.tools</groupId>
-    <artifactId>exception-scanner</artifactId>
+    <artifactId>code-scanner</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Exception Kullanim Tarayici</name>
@@ -68,13 +68,13 @@
 
     <build>
         <plugins>
-            <!-- Tüm bağımlılıklarla tek bir çalıştırılabilir jar üretir (target/exception-scanner-1.0.0.jar).
+            <!-- Tüm bağımlılıklarla tek bir çalıştırılabilir jar üretir (target/code-scanner-1.0.0.jar).
                  Normalde komut satırı aracı olarak, server parametresiyle REST API olarak çalışır. -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>com.example.exscan.ScannerApp</mainClass>
+                    <mainClass>com.scanner.exception.ScannerApp</mainClass>
                     <!-- mvn spring-boot:run sunucu modunda (Swagger) açılsın; jar'ın kendisini etkilemez -->
                     <arguments>
                         <argument>--server</argument>

@@ -18,7 +18,7 @@ USER 0
 # Bitbucket / git adreslerinden klonlamak için git (ssh protokolü için openssh-clients)
 RUN microdnf install -y git-core openssh-clients && microdnf clean all
 WORKDIR /app
-COPY --from=build /src/target/exception-scanner-1.0.0.jar /app/app.jar
+COPY --from=build /src/target/code-scanner-1.0.0.jar /app/app.jar
 # Varsayılan ayar dosyası; OpenShift'te ConfigMap ile /app/config/scanner.properties üzerine bağlanır
 COPY openshift/scanner.properties /app/config/scanner.properties
 COPY openshift/entrypoint.sh /app/entrypoint.sh

@@ -14,7 +14,7 @@ Tarayıcıyı çalıştıracak makinede JDK 17 veya üstü ve derleme için Mave
 mvn -q package
 ```
 
-Çıktı: `target/exception-scanner-1.0.0.jar` (tüm bağımlılıklar içinde). Aynı jar komut satırı aracı olarak veya `--server` ile REST API olarak çalışır (bkz. [REST API ve Swagger](#rest-api-ve-swagger)).
+Çıktı: `target/code-scanner-1.0.0.jar` (tüm bağımlılıklar içinde). Aynı jar komut satırı aracı olarak veya `--server` ile REST API olarak çalışır (bkz. [REST API ve Swagger](#rest-api-ve-swagger)).
 
 ## Ayarlar
 
@@ -52,7 +52,7 @@ Kullanıcı adı boş bırakılırsa `Authorization: Bearer <token>` (Bitbucket 
 Ayar dosyası gerekmez, her şey komut satırından verilebilir:
 
 ```bash
-java -jar target/exception-scanner-1.0.0.jar \
+java -jar target/code-scanner-1.0.0.jar \
      --local C:/projeler/musteri-servisi \
      --class com.firma.framework.exception.CustomException \
      --pattern 0,STRING,*
@@ -63,7 +63,7 @@ java -jar target/exception-scanner-1.0.0.jar \
 ### GitHub, GitLab veya herhangi bir git adresi
 
 ```bash
-java -jar target/exception-scanner-1.0.0.jar \
+java -jar target/code-scanner-1.0.0.jar \
      --git https://github.com/sahip/repo \
      --class com.firma.framework.exception.CustomException \
      --pattern 0,STRING,*
@@ -74,7 +74,7 @@ java -jar target/exception-scanner-1.0.0.jar \
 ### Bitbucket
 
 ```bash
-java -jar target/exception-scanner-1.0.0.jar scanner.properties
+java -jar target/code-scanner-1.0.0.jar scanner.properties
 ```
 
 Repolar `work.dir` (varsayılan `./scannedRepos`) altına sığ (`--depth 1`) olarak klonlanır; tekrar çalıştırıldığında sadece güncellenir. İlk denemede `bitbucket.projects` ile tek bir projeyle başlamanızı öneririm.
@@ -167,7 +167,7 @@ Sabitin değeri adından farklıysa (örneğin `ERROR_CODE = "errorCode"`) strin
 Hata bazen exception fırlatmak yerine başka yollarla bildirilir, örneğin mobile dönen cevaba hata kodu yazılarak. Bunları da aynı raporda görmek için metot çağrısı desenleri tanımlanabilir:
 
 ```bash
-java -jar target/exception-scanner-1.0.0.jar \
+java -jar target/code-scanner-1.0.0.jar \
      --local ~/projeler/servis \
      --class com.firma.framework.CustomException \
      --pattern "0,STRING,*" \
@@ -212,7 +212,7 @@ Mevcut tablolarınızın sütun adları farklıysa hem SQL dosyasındaki `REFERE
 
 ```bash
 export DB_USER=kullanici DB_PASSWORD=sifre
-java -jar target/exception-scanner-1.0.0.jar tarama.properties --db --db-note "Ekim takibi"
+java -jar target/code-scanner-1.0.0.jar tarama.properties --db --db-note "Ekim takibi"
 ```
 
 İlk seferde `--db-dry-run` ile deneyin: eşleştirme yapılır ve sonucu Excel'deki "DB Sınıf Id", "DB Metot Id", "Eşleşme" sütunlarında görünür, ama tabloya bir şey yazılmaz.
@@ -252,11 +252,11 @@ Her desenin `pattern.N.type` (çağrılarda `call.N.type`) değeri `usage_type_c
 | `env.all_popups` | `ebml.popup` paketi (ve alt paketleri) altındaki `.ebml` dosyaları |
 | `env.all_regions` | Adı `RG_` ile başlayan **veya** `ebml.region` paketi altındaki `.ebml` dosyaları |
 | `env.all_reports` | `ebml.report` paketi (ve alt paketleri) altındaki `.dsxml` dosyaları |
-| `env.all_processes` | `process` klasörü altındaki `250001-RISM.par` gibi klasörlerde bulunan `processdefinition.xml` dosyaları |
+| `env.all_processes` | `process` klasörü altındaki `250001-RISM.par` veya `250001-RISM` gibi klasörlerde bulunan `processdefinition.xml` dosyaları (`.par` eki zorunlu değil) |
 
 Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `all_regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
 
-Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>-<ad>.par` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır.
+Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` veya `250001-RISM` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>-<ad>` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır. Klasör adının sonundaki `.par` eki zorunlu değildir: `250001-RISM.par` ve `250001-RISM` ikisi de process sayılır; Excel'deki "Kural" sütununda `.par` eklilerde `PAR`, eksizlerde `FOLDER` yazar.
 
 ### Kurulum ve çalıştırma
 
@@ -264,11 +264,11 @@ Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.
 
 ```bash
 # Sadece ekran/rapor envanteri
-java -jar target/exception-scanner-1.0.0.jar scanner.properties --ebml --db-dry-run
-java -jar target/exception-scanner-1.0.0.jar scanner.properties --ebml --db
+java -jar target/code-scanner-1.0.0.jar scanner.properties --ebml --db-dry-run
+java -jar target/code-scanner-1.0.0.jar scanner.properties --ebml --db
 
 # Exception taramasıyla birlikte (tek scan_run_id altında)
-java -jar target/exception-scanner-1.0.0.jar scanner.properties --class tr.com.cs.aurora.auroracore.utility.CSException --ebml --db
+java -jar target/code-scanner-1.0.0.jar scanner.properties --class tr.com.cs.aurora.auroracore.utility.CSException --ebml --db
 ```
 
 ### Proje eşleştirmesi
@@ -312,14 +312,14 @@ Her kayıtta dosya adı, paket, repo içindeki yol, Bitbucket'ta dosyayı açan 
 Tarayıcı komut satırı yerine bir web servisi olarak da çalışabilir. Taramalar tarayıcıdan, Swagger arayüzüyle başlatılır ve raporlar oradan indirilir:
 
 ```bash
-java -jar target/exception-scanner-1.0.0.jar --server
+java -jar target/code-scanner-1.0.0.jar --server
 ```
 
 Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:8080/swagger-ui.html` adresini açar:
 
 - IDE'de `ScanServerApplication` sınıfını çalıştırın (IntelliJ: sınıfın yanındaki ▶ veya Spring Boot çalıştırma ayarı). `ScannerApp` sınıfını parametresiz çalıştırırsanız sunucu değil komut satırı taraması başlar.
 - `mvn spring-boot:run`
-- `java -jar target/exception-scanner-1.0.0.jar --server`
+- `java -jar target/code-scanner-1.0.0.jar --server`
 
 Çalışma klasöründeki `scanner.properties` temel ayar olarak okunur. Bitbucket token'ı için `BITBUCKET_TOKEN` ortam değişkenini verin. Port doluysa `PORT=8081` ile değiştirin.
 
@@ -447,10 +447,10 @@ Tarayıcı her dosyayı ayrıştırıp işini bitirince bellekten bırakır. Kul
 Yine de `OutOfMemoryError` alırsanız:
 
 ```bash
-java -Xmx4g -jar target/exception-scanner-1.0.0.jar scanner.properties --threads 2
+java -Xmx4g -jar target/code-scanner-1.0.0.jar scanner.properties --threads 2
 ```
 
-`-Xmx4g` Java'ya 4 GB bellek kullanma izni verir; `--threads` aynı anda taranan repo sayısını azaltır. Tek bir repo belleği aşarsa tarama durmaz: o repo raporda "BELLEK" hatasıyla işaretlenir, diğerleri taranmaya devam eder. `scan.max.file.kb` (varsayılan 2048 KB) üzerindeki dosyalar, genelde üretilmiş kod oldukları için atlanır ve Tarama Hataları sayfasında "ATLANDI" olarak listelenir.
+`-Xmx4g` Java'ya 4 GB bellek kullanma izni verir; `--threads` aynı anda taranan repo sayısını azaltır. Tek bir repo belleği aşarsa tarama durmaz: o repo raporda "OUT_OF_MEMORY" hatasıyla işaretlenir, diğerleri taranmaya devam eder. `scan.max.file.kb` (varsayılan 2048 KB) üzerindeki dosyalar, genelde üretilmiş kod oldukları için atlanır ve Tarama Hataları sayfasında "SKIPPED" olarak listelenir.
 
 ## Sınırlamalar
 
@@ -466,7 +466,7 @@ Dosyalar önce UTF-8 olarak okunur; geçersiz karakter varsa `scan.fallback.char
 
 ## Kod yapısı
 
-Kaynaklar `src/main/java/com/example/exscan` altında, sorumluluğa göre paketlere ayrılmıştır:
+Kaynaklar `src/main/java/com/scanner/exception` altında, sorumluluğa göre paketlere ayrılmıştır:
 
 | Paket | İçerik |
 |---|---|
