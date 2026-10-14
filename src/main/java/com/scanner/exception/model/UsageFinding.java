@@ -4,6 +4,23 @@ import com.scanner.exception.scan.ArgumentClassifier.ArgKind;
 
 /** Aranan desene uyan bir exception oluşturma yeri. */
 public final class UsageFinding extends Located {
+
+    /** Kullanımın bağlamı. Rapora ve env.exception_usage.usage_context sütununa adıyla yazılır. */
+    public enum Context {
+        /** throw new ... */
+        THROW,
+        /** return new ... */
+        RETURN,
+        /** Değişkene atanıyor: Ex e = new ...; veya e = new ... */
+        ASSIGNMENT,
+        /** Bir metot veya constructor çağrısına parametre olarak veriliyor */
+        ARGUMENT,
+        /** Diğer kullanımlar */
+        OTHER,
+        /** call.N desenine uyan metot çağrısı */
+        METHOD_CALL
+    }
+
     public String targetClass = "";
     public String pattern = "";
     /** Veritabanındaki kullanım tipi kodu (desenin type değeri) */
@@ -15,5 +32,5 @@ public final class UsageFinding extends Located {
     public ArgKind messageKind;
     public String message = "";
     public String expression = "";
-    public String context = "";
+    public Context context = Context.OTHER;
 }

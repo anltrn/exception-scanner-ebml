@@ -2,14 +2,14 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: exception-scanner
+  name: code-scanner
   annotations:
     # Buyuk Excel raporlarinin indirilmesi kesilmesin
     haproxy.router.openshift.io/timeout: 5m
 spec:
   to:
     kind: Service
-    name: exception-scanner
+    name: code-scanner
   port:
     targetPort: http
   tls:

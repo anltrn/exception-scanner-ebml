@@ -275,7 +275,7 @@ public final class Config {
         } else if (overrides.isEmpty()) {
             throw new IOException("Ayar dosyası bulunamadı: "
                     + (file == null ? "scanner.properties" : file.toAbsolutePath().toString())
-                    + ". Parametreler için: java -jar code-scanner.jar --help");
+                    + ". Parametreler için: java -jar code-scanner-1.0.0.jar --help");
         }
         // Komut satırında desen verilmişse dosyadaki aynı türden desenler yok sayılır
         for (String prefix : new String[]{"pattern.", "call."}) {

@@ -1,11 +1,11 @@
 # Imaji OpenShift icinde derler (Docker stratejisi, kaynak yerel klasorden yuklenir):
-#   oc start-build exception-scanner --from-dir=. --follow
+#   oc start-build code-scanner --from-dir=. --follow
 # Disaridan hazir imaj kullanilacaksa bu dosyayi kustomization.yaml'dan cikarip
 # deployment.yaml'daki image alanini registry adresiyle degistirin.
 apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
-  name: exception-scanner
+  name: code-scanner
 spec:
   lookupPolicy:
     local: true
@@ -13,7 +13,7 @@ spec:
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
-  name: exception-scanner
+  name: code-scanner
 spec:
   source:
     type: Binary
@@ -30,7 +30,7 @@ spec:
   output:
     to:
       kind: ImageStreamTag
-      name: exception-scanner:latest
+      name: code-scanner:latest
   resources:
     limits:
       memory: 2Gi

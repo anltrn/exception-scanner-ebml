@@ -198,13 +198,13 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.exception_usage_type` | Kullanım tipleri (desenlerin karşılığı). Tarayıcı her çalışmada ayar dosyasındaki desenlerle günceller |
 | `env.exception_scan_run` | Her tarama çalıştırması bir kayıt |
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
-| `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü |
+| `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |
 | `env.v_exception_usage_summary` | Son tarama, proje ve tipe göre sayılar |
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |
 | `env.v_exception_scan_error_latest` | Son taramanın hataları |
 
-Daha önce kurulum yaptıysanız dosyayı tekrar çalıştırmanız yeterli; mevcut tablolara dokunmaz, sadece eksik olanları ekler. `env.exception_scan_error` tablosu yoksa tarama yine kullanımları yazar, hatalar için logda uyarı verir.
+Daha önce kurulum yaptıysanız dosyayı tekrar çalıştırmanız yeterli; tabloları silmez, sadece eksik olanları ekler. Önceki sürümlerin yazdığı Türkçe kodları da İngilizce karşılıklarına çevirir: `exception_scan_error.stage` (`KLONLAMA` → `CLONE`, `ATLANDI` → `SKIPPED` ...), `exception_usage.usage_context` (`değişkene atama` → `ASSIGNMENT` ...) ve tip kodu `TUM_KULLANIMLAR` → `ALL_USAGES`. Bu değerlerle filtreleyen kayıtlı sorgularınız varsa yeni kodlara göre güncelleyin. `env.exception_scan_error` tablosu yoksa tarama yine kullanımları yazar, hatalar için logda uyarı verir.
 
 Mevcut tablolarınızın sütun adları farklıysa hem SQL dosyasındaki `REFERENCES` satırlarını hem de `db.*` ayarlarını güncelleyin.
 
@@ -256,7 +256,7 @@ Her desenin `pattern.N.type` (çağrılarda `call.N.type`) değeri `usage_type_c
 
 Region kuralı önce uygulanır: `ebml.page` veya `ebml.popup` altında olup adı `RG_` ile başlayan bir dosya region sayılır. `all_regions.match_rule` sütunu dosyanın hangi kuralla bulunduğunu (`PREFIX`, `PACKAGE`, `PREFIX+PACKAGE`) gösterir. Kurallara uymayan `.ebml` / `.dsxml` dosyaları tablolara yazılmaz, Excel'deki "EBML Dosyaları" sayfasında "Sınıflandırılmadı" olarak listelenir. `target`, `bin`, `classes` gibi derleme klasörlerindeki kopyalar sayılmaz (`scan.exclude.dirs`).
 
-Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` veya `250001-RISM` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>-<ad>` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır. Klasör adının sonundaki `.par` eki zorunlu değildir: `250001-RISM.par` ve `250001-RISM` ikisi de process sayılır; Excel'deki "Kural" sütununda `.par` eklilerde `PAR`, eksizlerde `FOLDER` yazar.
+Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.par` veya `250001-RISM` → `250001`), `process_name` ise `processdefinition.xml` içindeki `label` özelliğinden (`label="Müşteri Değerlendirme"`) alınır. Önce kök elemanın `label` değerine bakılır, yoksa adında `process` geçen ilk elemanınkine. Klasör adı `folder_name` sütununa yazılır. `label` bulunamazsa `process_name` boş kalır ve dosya "Tarama Hataları" sayfasında listelenir. Klasör adı `ebml.process.dir` ile değiştirilebilir (varsayılan `process`); bu klasörün altında olmayan veya `<numara>[-<ad>][.par]` biçimine uymayan klasörlerdeki `processdefinition.xml` dosyaları "Sınıflandırılmadı" olarak sadece rapora yazılır. Klasör adının sonundaki `.par` eki zorunlu değildir: `250001-RISM.par` ve `250001-RISM` ikisi de process sayılır; Excel'deki "Kural" sütununda `.par` eklilerde `PAR`, eksizlerde `FOLDER` yazar.
 
 ### Kurulum ve çalıştırma
 
@@ -381,7 +381,7 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 oc project <namespace>
 
 # 1. Gizli değerler (depoya eklemeyin; örnek: openshift/secret.example.yaml)
-oc create secret generic exception-scanner-secrets \
+oc create secret generic code-scanner-secrets \
   --from-literal=BITBUCKET_TOKEN=<token> \
   --from-literal=SCANNER_API_KEY=<rastgele-uzun-değer>
 
@@ -389,10 +389,10 @@ oc create secret generic exception-scanner-secrets \
 oc apply -k openshift/
 
 # 3. İmajı OpenShift içinde derleyin (Docker stratejisi; yeni imaj gelince pod kendiliğinden yenilenir)
-oc start-build exception-scanner --from-dir=. --follow
+oc start-build code-scanner --from-dir=. --follow
 
 # 4. Swagger adresi
-echo "https://$(oc get route exception-scanner -o jsonpath='{.spec.host}')/swagger-ui.html"
+echo "https://$(oc get route code-scanner -o jsonpath='{.spec.host}')/swagger-ui.html"
 ```
 
 Oluşan kaynaklar:
@@ -403,7 +403,7 @@ Oluşan kaynaklar:
 | `deployment.yaml` | Tek pod, sağlık kontrolleri, haftalık tarama zamanı, 2–4 GiB bellek, root olmayan güvenlik ayarları |
 | `pvc.yaml` | 20 GiB disk: klonlar (`/data/work`) ve raporlar (`/data/reports`) |
 | `service.yaml`, `route.yaml` | HTTPS (edge) Route, büyük rapor indirmeleri için 5 dakika zaman aşımı |
-| `scanner.properties` | `exception-scanner-config` ConfigMap'i; değişince pod yeniden başlar |
+| `scanner.properties` | `code-scanner-config` ConfigMap'i; değişince pod yeniden başlar |
 
 Notlar:
 
@@ -413,6 +413,37 @@ Notlar:
 - **Sürekli çalışma:** Pod sürekli ayakta kalır, haftalık tarama pod içindeki zamanlayıcıyla yapılır; ayrıca CronJob gerekmez. Pod çökerse OpenShift yeniden başlatır.
 - **Tek pod:** Tarama geçmişi pod'da tutulduğu ve disk ReadWriteOnce olduğu için `replicas: 1` ve `Recreate` stratejisi kullanılır.
 - **Erişim:** Route dışarı açıksa `SCANNER_API_KEY` mutlaka tanımlanmalı; Swagger ve sağlık kontrolleri anahtarsız açılır, `/api` istekleri anahtar ister.
+
+### `exception-scanner` adıyla kurulmuş ortamdan geçiş
+
+Kaynakların adı `exception-scanner` iken `code-scanner` oldu. `oc apply -k openshift/` eski kaynakları değiştirmez, yeni adla yenilerini oluşturur: yeni Secret ve boş bir disk (PVC) gerekir, Route adresi de değişir (`code-scanner-<namespace>...`). Klonlanan repolar yeni diskte ilk taramada kendiliğinden oluşur; önceki taramaların raporları ve tarama listesi isteğe bağlı olarak taşınabilir:
+
+```bash
+oc project <namespace>
+
+# 1. Önceki taramaların raporlarını yedekleyin (istenirse)
+POD=$(oc get pod -l app=exception-scanner -o jsonpath='{.items[0].metadata.name}')
+oc rsync $POD:/data/reports ./rapor-yedek
+
+# 2. Eski pod'u durdurun, Secret'ı yeni adla kopyalayın
+oc scale deployment/exception-scanner --replicas=0
+oc extract secret/exception-scanner-secrets --to=secret-tmp
+oc create secret generic code-scanner-secrets --from-file=secret-tmp && rm -rf secret-tmp
+
+# 3. Yeni kaynakları kurup imajı derleyin
+oc apply -k openshift/
+oc start-build code-scanner --from-dir=. --follow
+
+# 4. Raporları yeni diske yükleyip pod'u yeniden başlatın (tarama listesi açılışta rapor klasöründen okunur)
+POD=$(oc get pod -l app=code-scanner -o jsonpath='{.items[0].metadata.name}')
+oc rsync ./rapor-yedek/reports/ $POD:/data/reports/
+oc rollout restart deployment/code-scanner
+
+# 5. Yeni kurulum çalışıyorsa eski kaynakları silin (eski disk ve içindeki veriler de silinir)
+oc delete deployment/exception-scanner service/exception-scanner route/exception-scanner \
+  buildconfig/exception-scanner imagestream/exception-scanner pvc/exception-scanner-data secret/exception-scanner-secrets
+oc delete configmap -l app.kubernetes.io/name=exception-scanner
+```
 
 ## Paralel işleme
 

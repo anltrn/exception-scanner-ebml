@@ -321,8 +321,8 @@ public final class JavaSourceScanner {
         for (ObjectCreationExpr oce : cu.findAll(ObjectCreationExpr.class)) {
             String target = TypeMatcher.match(oce.getType().getNameWithScope(), ictx, targets, cfg.lenientMatch);
             if (target == null) continue;
-            String ctx = context(oce);
-            if (cfg.throwOnly && !"throw".equals(ctx)) continue;
+            UsageFinding.Context ctx = context(oce);
+            if (cfg.throwOnly && ctx != UsageFinding.Context.THROW) continue;
 
             List<ArgumentClassifier.Result> args = ArgumentClassifier.analyzeAll(oce.getArguments());
             UsagePattern matched = null;
@@ -371,7 +371,7 @@ public final class JavaSourceScanner {
     /** Argümanlardaki ilk sayıyı id, ilk mesajı da mesaj olarak bulguya yazar. */
     private static void fillArgs(UsageFinding u, List<ArgumentClassifier.Result> args) {
         for (ArgumentClassifier.Result r : args) {
-            if (u.idValue.isEmpty() && r.kind == ArgKind.SAYI) u.idValue = r.text;
+            if (u.idValue.isEmpty() && r.kind == ArgKind.NUMBER) u.idValue = r.text;
             if (u.messageKind == null && r.kind.hasMessage) {
                 u.messageKind = r.kind;
                 u.message = r.text;
@@ -379,7 +379,7 @@ public final class JavaSourceScanner {
         }
         if (u.messageKind == null) {
             for (ArgumentClassifier.Result r : args) {
-                if (r.kind == ArgKind.EXCEPTION_MESAJI) {
+                if (r.kind == ArgKind.EXCEPTION_MESSAGE) {
                     u.messageKind = r.kind;
                     break;
                 }
@@ -411,7 +411,7 @@ public final class JavaSourceScanner {
             u.pattern = matched.name;
             u.typeCode = matched.type();
             u.action = matched.action;
-            u.context = "metot çağrısı";
+            u.context = UsageFinding.Context.METHOD_CALL;
             u.expression = BitbucketClient.abbreviate(mc.toString().replaceAll("\\s+", " "), 500);
             fillArgs(u, args);
             result.usages.add(u);
@@ -574,14 +574,14 @@ public final class JavaSourceScanner {
     }
 
     /** Exception'ın oluşturulduğu bağlam: doğrudan throw mu, bir değişkene mi atanıyor vb. */
-    private static String context(ObjectCreationExpr oce) {
+    private static UsageFinding.Context context(ObjectCreationExpr oce) {
         Node p = oce.getParentNode().orElse(null);
         while (p instanceof EnclosedExpr || p instanceof CastExpr) p = p.getParentNode().orElse(null);
-        if (p instanceof ThrowStmt) return "throw";
-        if (p instanceof ReturnStmt) return "return";
-        if (p instanceof VariableDeclarator || p instanceof AssignExpr) return "değişkene atama";
-        if (p instanceof MethodCallExpr || p instanceof ObjectCreationExpr) return "parametre olarak";
-        return "diğer";
+        if (p instanceof ThrowStmt) return UsageFinding.Context.THROW;
+        if (p instanceof ReturnStmt) return UsageFinding.Context.RETURN;
+        if (p instanceof VariableDeclarator || p instanceof AssignExpr) return UsageFinding.Context.ASSIGNMENT;
+        if (p instanceof MethodCallExpr || p instanceof ObjectCreationExpr) return UsageFinding.Context.ARGUMENT;
+        return UsageFinding.Context.OTHER;
     }
 
     private static List<ClassOrInterfaceType> caughtTypes(Type t) {

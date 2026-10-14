@@ -1,11 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: exception-scanner
+  name: code-scanner
   annotations:
     # ImageStream'e yeni imaj gelince otomatik yeniden dagit
     image.openshift.io/triggers: >-
-      [{"from":{"kind":"ImageStreamTag","name":"exception-scanner:latest"},
+      [{"from":{"kind":"ImageStreamTag","name":"code-scanner:latest"},
         "fieldPath":"spec.template.spec.containers[?(@.name==\"scanner\")].image"}]
 spec:
   # Uygulama surekli ayakta kalir: haftalik otomatik tarama pod icindeki zamanlayiciyla calisir.
@@ -17,15 +17,15 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: exception-scanner
+      app: code-scanner
   template:
     metadata:
       labels:
-        app: exception-scanner
+        app: code-scanner
     spec:
       containers:
         - name: scanner
-          image: exception-scanner:latest
+          image: code-scanner:latest
           ports:
             - name: http
               containerPort: 8080
@@ -52,7 +52,7 @@ spec:
           # BITBUCKET_USERNAME, BITBUCKET_TOKEN, DB_USER, DB_PASSWORD, SCANNER_API_KEY
           envFrom:
             - secretRef:
-                name: exception-scanner-secrets
+                name: code-scanner-secrets
                 optional: true
           volumeMounts:
             - name: config
@@ -97,10 +97,10 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: exception-scanner-config
+            name: code-scanner-config
         - name: data
           persistentVolumeClaim:
-            claimName: exception-scanner-data
+            claimName: code-scanner-data
         # Kumenin guvenilen CA paketi: bos bir ConfigMap olusturup
         #   oc label configmap trusted-ca config.openshift.io/inject-trusted-cabundle=true
         # ile etiketlerseniz OpenShift icine ca-bundle.crt ekler.

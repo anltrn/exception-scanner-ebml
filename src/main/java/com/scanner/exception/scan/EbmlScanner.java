@@ -181,7 +181,7 @@ public final class EbmlScanner {
                 e.packageName = "";
             } else {
                 e.kind = EbmlFile.Kind.UNCLASSIFIED;
-                e.rule = "processdefinition.xml, " + ebml.processDir + "/<numara>-<ad>[.par] altında değil";
+                e.rule = "processdefinition.xml, " + ebml.processDir + "/<numara>[-<ad>][.par] altında değil";
             }
         } else if (lowerName.endsWith(EBML)) {
             boolean prefix = !ebml.regionPrefix.isEmpty()

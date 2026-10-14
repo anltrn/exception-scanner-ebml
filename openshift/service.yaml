@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: exception-scanner
+  name: code-scanner
 spec:
   selector:
-    app: exception-scanner
+    app: code-scanner
   ports:
     - name: http
       port: 8080

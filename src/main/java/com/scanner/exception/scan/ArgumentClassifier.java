@@ -22,14 +22,14 @@ public final class ArgumentClassifier {
 
     /** Constructor'a geçilen tek bir argümanın türü. */
     public enum ArgKind {
-        STRING_SABIT("String sabit", true),
-        STRING_BIRLESTIRME("String birleştirme", true),
+        STRING_LITERAL("String sabit", true),
+        STRING_CONCAT("String birleştirme", true),
         STRING_FORMAT("String.format / MessageFormat", true),
-        EXCEPTION_MESAJI("Başka exception'ın mesajı (getMessage)", false),
-        SEBEP("Yakalanan exception (cause)", false),
-        SAYI("Sayı", false),
-        SABIT_REFERANS("Sabit referansı", false),
-        DEGISKEN("Değişken / ifade", false);
+        EXCEPTION_MESSAGE("Başka exception'ın mesajı (getMessage)", false),
+        CAUSE("Yakalanan exception (cause)", false),
+        NUMBER("Sayı", false),
+        CONSTANT_REF("Sabit referansı", false),
+        VARIABLE("Değişken / ifade", false);
 
         public final String label;
         /** Mesaj metni kodun içinde yazılı mı (sabit, birleştirme veya format) */
@@ -43,7 +43,7 @@ public final class ArgumentClassifier {
 
     static final class Result {
         final ArgKind kind;
-        /** SAYI için sayının kendisi, mesajlar için şablon, diğerleri için ifadenin kısaltılmış hali */
+        /** NUMBER için sayının kendisi, mesajlar için şablon, diğerleri için ifadenin kısaltılmış hali */
         final String text;
         /** Argümanın boşluksuz kaynak kodu, ör. GENERALERRORCODE.ERROR_CODE */
         String source = "";
@@ -55,9 +55,9 @@ public final class ArgumentClassifier {
             this.text = text;
         }
 
-        /** SAYI türündeki argümanın değeri; 0, 0x0, 0L gibi yazımlar aynı değere çözülür. */
+        /** NUMBER türündeki argümanın değeri; 0, 0x0, 0L gibi yazımlar aynı değere çözülür. */
         Long numericValue() {
-            if (kind != ArgKind.SAYI) return null;
+            if (kind != ArgKind.NUMBER) return null;
             String s = text.replace("_", "").replaceAll("[lL]$", "");
             try {
                 return Long.decode(s);
@@ -84,24 +84,24 @@ public final class ArgumentClassifier {
     private static Result classify(Expression a) {
 
         if (a.isStringLiteralExpr()) {
-            return new Result(ArgKind.STRING_SABIT, a.asStringLiteralExpr().asString());
+            return new Result(ArgKind.STRING_LITERAL, a.asStringLiteralExpr().asString());
         }
         if (a.isIntegerLiteralExpr() || a.isLongLiteralExpr()) {
-            return new Result(ArgKind.SAYI, a.toString());
+            return new Result(ArgKind.NUMBER, a.toString());
         }
         if (a.isUnaryExpr() && a.asUnaryExpr().getOperator() == UnaryExpr.Operator.MINUS) {
             Expression inner = unwrap(a.asUnaryExpr().getExpression());
             if (inner.isIntegerLiteralExpr() || inner.isLongLiteralExpr()) {
-                return new Result(ArgKind.SAYI, "-" + inner.toString());
+                return new Result(ArgKind.NUMBER, "-" + inner.toString());
             }
         }
         if (a.isBinaryExpr() && a.asBinaryExpr().getOperator() == BinaryExpr.Operator.PLUS) {
             List<Expression> parts = new ArrayList<Expression>();
             flatten(a, parts);
             for (Expression p : parts) {
-                if (p.isStringLiteralExpr()) return new Result(ArgKind.STRING_BIRLESTIRME, template(parts));
+                if (p.isStringLiteralExpr()) return new Result(ArgKind.STRING_CONCAT, template(parts));
             }
-            return new Result(ArgKind.DEGISKEN, shortText(a));
+            return new Result(ArgKind.VARIABLE, shortText(a));
         }
         if (a.isMethodCallExpr()) {
             MethodCallExpr m = a.asMethodCallExpr();
@@ -116,20 +116,20 @@ public final class ArgumentClassifier {
                 }
             }
             if ((name.equals("getMessage") || name.equals("getLocalizedMessage")) && m.getArguments().isEmpty()) {
-                return new Result(ArgKind.EXCEPTION_MESAJI, shortText(a));
+                return new Result(ArgKind.EXCEPTION_MESSAGE, shortText(a));
             }
-            return new Result(ArgKind.DEGISKEN, shortText(a));
+            return new Result(ArgKind.VARIABLE, shortText(a));
         }
         if (a.isNameExpr()) {
             String n = a.asNameExpr().getNameAsString();
-            if (isCatchParameter(a, n)) return new Result(ArgKind.SEBEP, n);
-            if (CONSTANT.matcher(n).matches()) return new Result(ArgKind.SABIT_REFERANS, n);
-            return new Result(ArgKind.DEGISKEN, n);
+            if (isCatchParameter(a, n)) return new Result(ArgKind.CAUSE, n);
+            if (CONSTANT.matcher(n).matches()) return new Result(ArgKind.CONSTANT_REF, n);
+            return new Result(ArgKind.VARIABLE, n);
         }
         if (a.isFieldAccessExpr() && CONSTANT.matcher(a.asFieldAccessExpr().getNameAsString()).matches()) {
-            return new Result(ArgKind.SABIT_REFERANS, a.toString());
+            return new Result(ArgKind.CONSTANT_REF, a.toString());
         }
-        return new Result(ArgKind.DEGISKEN, shortText(a));
+        return new Result(ArgKind.VARIABLE, shortText(a));
     }
 
     /** Parantez ve cast'leri soyar: ((String) "x") -> "x" */

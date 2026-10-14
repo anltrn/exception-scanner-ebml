@@ -504,13 +504,19 @@ public final class ScannerApp {
         return e.stage == ScanError.Stage.PARSE || e.stage == ScanError.Stage.READ || e.stage == ScanError.Stage.SKIPPED;
     }
 
+    /** Reponun Java dosyalarının hiç taranamamasına yol açan hata mı (EBML / process hataları sayılmaz) */
+    private static boolean isRepoFailure(ScanError e) {
+        return e.stage == ScanError.Stage.CLONE || e.stage == ScanError.Stage.SCAN
+                || e.stage == ScanError.Stage.OUT_OF_MEMORY || e.stage == ScanError.Stage.FILE_LISTING;
+    }
+
     /** Hiç sonuç çıkmadığında olası sebebi açıklar. */
     private static void diagnose(Config cfg, List<RepoResult> results, long javaFiles, long mentions,
                                  long parseFailures) {
         int repoFailures = 0;
         for (RepoResult r : results) {
             for (ScanError e : r.errors) {
-                if (!isJavaFileError(e)) repoFailures++;
+                if (isRepoFailure(e)) repoFailures++;
             }
         }
         List<String> simple = new ArrayList<String>();

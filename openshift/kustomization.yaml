@@ -5,8 +5,8 @@ kind: Kustomization
 
 labels:
   - pairs:
-      app.kubernetes.io/name: exception-scanner
-      app.kubernetes.io/part-of: exception-scanner
+      app.kubernetes.io/name: code-scanner
+      app.kubernetes.io/part-of: code-scanner
     includeSelectors: false
 
 resources:
@@ -18,6 +18,6 @@ resources:
 
 # scanner.properties degisince ConfigMap adi degisir ve pod otomatik yeniden baslar
 configMapGenerator:
-  - name: exception-scanner-config
+  - name: code-scanner-config
     files:
       - scanner.properties

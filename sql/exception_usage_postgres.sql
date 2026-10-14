@@ -28,10 +28,10 @@ CREATE TABLE IF NOT EXISTS env.exception_usage_type (
 );
 
 COMMENT ON TABLE  env.exception_usage_type IS 'Kullanım tipleri: ayar dosyasındaki her desenin (pattern.N.* / call.N.*) karşılığı. Tarayıcı her çalıştırmada desenleri bu tabloya ekler veya günceller (silmez); elle de kayıt eklenebilir.';
-COMMENT ON COLUMN env.exception_usage_type.type_code IS 'Kullanım tipi kodu: pattern.N.type / call.N.type, verilmediyse desen adından üretilir (ör. KOD0_SERBEST_METIN); büyük harf, rakam ve _ (en fazla 50). pattern.N tanımlanmadan exception sınıfı arandığında tüm kullanımlar TUM_KULLANIMLAR koduyla yazılır';
-COMMENT ON COLUMN env.exception_usage_type.type_name IS 'Desenin adı (pattern.N.name / call.N.name), ör. "Kod 0 + serbest metin"; ad verilmediyse "Desen N (...)" / "Çağrı N (...)", TUM_KULLANIMLAR için "Tüm kullanımlar"';
-COMMENT ON COLUMN env.exception_usage_type.action IS 'Bu tipteki kullanımlar için yapılacak iş (pattern.N.action / call.N.action); verilmediyse desenlerde "Yeni yapıya çevrilmeli", çağrılarda "Merkezi hata yapısına taşınmalı", TUM_KULLANIMLAR için "İncelenmeli". Sadece elle eklenen kayıtlarda boş olabilir';
-COMMENT ON COLUMN env.exception_usage_type.args_spec IS 'Desenin argüman tanımı: exception desenlerinde pattern.N.args (ör. 0,STRING,*), çağrılarda kapsam.metot(argümanlar) (ör. outBag.put(GENERALERRORCODE.ERROR_CODE,ANY)); TUM_KULLANIMLAR için *';
+COMMENT ON COLUMN env.exception_usage_type.type_code IS 'Kullanım tipi kodu: pattern.N.type / call.N.type, verilmediyse desen adından üretilir (ör. KOD0_SERBEST_METIN); büyük harf, rakam ve _ (en fazla 50). pattern.N tanımlanmadan exception sınıfı arandığında tüm kullanımlar ALL_USAGES koduyla yazılır';
+COMMENT ON COLUMN env.exception_usage_type.type_name IS 'Desenin adı (pattern.N.name / call.N.name), ör. "Kod 0 + serbest metin"; ad verilmediyse "Desen N (...)" / "Çağrı N (...)", ALL_USAGES için "Tüm kullanımlar"';
+COMMENT ON COLUMN env.exception_usage_type.action IS 'Bu tipteki kullanımlar için yapılacak iş (pattern.N.action / call.N.action); verilmediyse desenlerde "Yeni yapıya çevrilmeli", çağrılarda "Merkezi hata yapısına taşınmalı", ALL_USAGES için "İncelenmeli". Sadece elle eklenen kayıtlarda boş olabilir';
+COMMENT ON COLUMN env.exception_usage_type.args_spec IS 'Desenin argüman tanımı: exception desenlerinde pattern.N.args (ör. 0,STRING,*), çağrılarda kapsam.metot(argümanlar) (ör. outBag.put(GENERALERRORCODE.ERROR_CODE,ANY)); ALL_USAGES için *';
 COMMENT ON COLUMN env.exception_usage_type.source_kind IS 'Desenin türü: EXCEPTION (new Sinif(...) ile exception oluşturma, pattern.N) veya CALL (metot çağrısı, call.N)';
 COMMENT ON COLUMN env.exception_usage_type.is_legacy IS 'true (varsayılan): eski, değiştirilmesi gereken kullanım; false: doğru kullanım, sadece takip için sayılır (pattern.N.legacy=false / call.N.legacy=false)';
 COMMENT ON COLUMN env.exception_usage_type.updated_at IS 'Kaydın tarayıcı tarafından son eklendiği veya güncellendiği an (desen ayar dosyasında oldukça her çalıştırmada yenilenir)';
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS env.exception_usage (
     --   METHOD_AMBIGUOUS  aynı adda birden fazla metot, en küçük id seçildi
     --   METHOD_NOT_FOUND  sınıf bulundu, metot bulunamadı (method_id boş)
     --   NO_METHOD         kullanım bir alan tanımında, metot yok (method_id boş)
-    --   CLASS_AMBIGUOUS   aynı FQCN birden fazla kayıtta, ayırt edilemedi
+    --   CLASS_AMBIGUOUS   aynı FQCN birden fazla kayıtta ve metot ayırt edemedi, en küçük id seçildi
     --   CLASS_NOT_FOUND   sınıf bulunamadı (class_id ve method_id boş)
     match_status     varchar(30)  NOT NULL,
     match_note       varchar(1000),
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS env.exception_usage (
     exception_class  varchar(300),                     -- CSException, alt sınıfı veya put(...)
     error_code       integer,                          -- new CSException(0, ...) -> 0
     message          text,                             -- koddaki mesaj / şablon
-    usage_context    varchar(50),                      -- throw | return | değişkene atama | parametre olarak | diğer | metot çağrısı
+    usage_context    varchar(50),                      -- THROW | RETURN | ASSIGNMENT | ARGUMENT | OTHER | METHOD_CALL
     is_test          boolean      NOT NULL DEFAULT false,
     code_snippet     text,
     link             varchar(2000),
@@ -117,8 +117,8 @@ COMMENT ON TABLE  env.exception_usage IS 'Exception kullanımları: desenlere uy
 COMMENT ON COLUMN env.exception_usage.id IS 'Kayıt numarası (otomatik artan)';
 COMMENT ON COLUMN env.exception_usage.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
 COMMENT ON COLUMN env.exception_usage.class_id IS 'Tarama anında kullanımın bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
-COMMENT ON COLUMN env.exception_usage.method_id IS 'Tarama anında kullanımın bulunduğu metodun env.java_method id''si (db.method.*); METHOD_NOT_FOUND, NO_METHOD ve CLASS_NOT_FOUND ise boş. FK yok; class_id boşken dolu olamaz';
-COMMENT ON COLUMN env.exception_usage.usage_type_code IS 'Kullanımın uyduğu desenin tip kodu, env.exception_usage_type.type_code değerine bağlı (FK); ör. KOD0_SERBEST_METIN, pattern.N tanımlanmadıysa TUM_KULLANIMLAR';
+COMMENT ON COLUMN env.exception_usage.method_id IS 'Tarama anında kullanımın bulunduğu metodun env.java_method id''si (db.method.*); metot bulunamadıysa (METHOD_NOT_FOUND, NO_METHOD, CLASS_NOT_FOUND veya metodu bulunamayan CLASS_AMBIGUOUS) boş. FK yok; class_id boşken dolu olamaz';
+COMMENT ON COLUMN env.exception_usage.usage_type_code IS 'Kullanımın uyduğu desenin tip kodu, env.exception_usage_type.type_code değerine bağlı (FK); ör. KOD0_SERBEST_METIN, pattern.N tanımlanmadıysa ALL_USAGES';
 COMMENT ON COLUMN env.exception_usage.match_status IS 'Envanter eşleştirmesinin sonucu: MATCHED (sınıf ve metot bulundu), METHOD_AMBIGUOUS (aynı adda birden fazla metot, en küçük id seçildi), METHOD_NOT_FOUND (sınıf bulundu, metot bulunamadı), NO_METHOD (kullanım alan tanımında veya metot dışında), CLASS_AMBIGUOUS (aynı FQCN birden fazla kayıtta, en küçük id seçildi), CLASS_NOT_FOUND (sınıf envanterde yok; db.insert.unmatched=false ise bu kullanımlar yazılmaz)';
 COMMENT ON COLUMN env.exception_usage.match_note IS 'Eşleştirme sonucunun açıklaması, ör. CLASS_NOT_FOUND için denenen adlar ("Aranan: a.b.Dis$Ic, a.b.Dis.Ic, a.b.Dis"), overload seçimi, dış sınıfa veya anonim sınıfı içeren sınıfa düşülmesi; açıklama yoksa boş';
 COMMENT ON COLUMN env.exception_usage.project_key IS 'Reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
@@ -131,7 +131,7 @@ COMMENT ON COLUMN env.exception_usage.method_signature IS 'Kullanımın kodda bu
 COMMENT ON COLUMN env.exception_usage.exception_class IS 'Oluşturulan exception sınıfının basit adı (exception.classes''taki sınıf veya repoda ondan türeyen alt sınıf, ör. CSException); çağrı desenlerinde çağrının kısa hali (ör. outBag.put(...))';
 COMMENT ON COLUMN env.exception_usage.error_code IS 'Argümanlardaki ilk tam sayı sabiti (new CSException(0, ...) -> 0, put(KOD, -1) -> -1); sayı argümanı yoksa veya int sınırını aşıyorsa boş';
 COMMENT ON COLUMN env.exception_usage.message IS 'Koddaki mesaj: ilk string argüman; birleştirmelerde değişkenler {0}, {1} ile gösterilir ("Kayıt bulunamadı: " + id -> Kayıt bulunamadı: {0}), String.format / MessageFormat.format çağrılarında biçim metni. Mesaj argümanı yoksa boş metin';
-COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: exception oluşturmada throw, return, değişkene atama, parametre olarak veya diğer; call.N desenlerinde metot çağrısı';
+COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: exception oluşturmada THROW (throw new ...), RETURN (return new ...), ASSIGNMENT (değişkene atama), ARGUMENT (bir çağrıya parametre olarak) veya OTHER (diğer); call.N desenlerinde METHOD_CALL';
 COMMENT ON COLUMN env.exception_usage.is_test IS 'Dosya test kodunda mı: yolunda src/test, test veya tests klasörü varsa true';
 COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi veya metot çağrısı), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
 COMMENT ON COLUMN env.exception_usage.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
@@ -141,6 +141,30 @@ CREATE INDEX IF NOT EXISTS ix_exception_usage_run    ON env.exception_usage (sca
 CREATE INDEX IF NOT EXISTS ix_exception_usage_class  ON env.exception_usage (class_id);
 CREATE INDEX IF NOT EXISTS ix_exception_usage_method ON env.exception_usage (method_id);
 CREATE INDEX IF NOT EXISTS ix_exception_usage_type   ON env.exception_usage (usage_type_code);
+
+-- Önceki sürümün yazdığı Türkçe değerler İngilizce kodlara çevrilir. Sadece eski değerli satırlara
+-- dokunur, tekrar çalıştırıldığında değişecek satır kalmaz:
+--   usage_context  : throw, return, değişkene atama, parametre olarak, diğer, metot çağrısı
+--                    -> THROW, RETURN, ASSIGNMENT, ARGUMENT, OTHER, METHOD_CALL
+--   tip kodu       : TUM_KULLANIMLAR -> ALL_USAGES (desen tanımlanmadan yapılan taramalar)
+UPDATE env.exception_usage
+   SET usage_context = CASE usage_context
+                           WHEN 'throw'            THEN 'THROW'
+                           WHEN 'return'           THEN 'RETURN'
+                           WHEN 'değişkene atama'  THEN 'ASSIGNMENT'
+                           WHEN 'parametre olarak' THEN 'ARGUMENT'
+                           WHEN 'diğer'            THEN 'OTHER'
+                           WHEN 'metot çağrısı'    THEN 'METHOD_CALL'
+                       END
+ WHERE usage_context IN ('throw', 'return', 'değişkene atama', 'parametre olarak', 'diğer', 'metot çağrısı');
+
+INSERT INTO env.exception_usage_type (type_code, type_name, action, args_spec, source_kind, is_legacy, updated_at)
+SELECT 'ALL_USAGES', type_name, action, args_spec, source_kind, is_legacy, updated_at
+  FROM env.exception_usage_type
+ WHERE type_code = 'TUM_KULLANIMLAR'
+ON CONFLICT (type_code) DO NOTHING;
+UPDATE env.exception_usage SET usage_type_code = 'ALL_USAGES' WHERE usage_type_code = 'TUM_KULLANIMLAR';
+DELETE FROM env.exception_usage_type WHERE type_code = 'TUM_KULLANIMLAR';
 
 -- ---------------------------------------------------------------------
 --  Tarama sırasında karşılaşılan hatalar (Excel'deki "Tarama Hataları"

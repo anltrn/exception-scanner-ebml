@@ -24,7 +24,7 @@ public final class UsagePattern {
 
     public static final String ALL = "Tüm kullanımlar";
     /** Desen tanımlanmadığında tüm kullanımlar bu tip koduyla kaydedilir */
-    public static final String ALL_TYPE = "TUM_KULLANIMLAR";
+    public static final String ALL_TYPE = "ALL_USAGES";
 
     private static final Set<String> KEYWORDS = new HashSet<String>(Arrays.asList(
             "ANY", "STRING", "STRING_LITERAL", "INT", "CAUSE", "GETMESSAGE", "CONST", "VAR"));
@@ -131,22 +131,22 @@ public final class UsagePattern {
                 String last = dot > 0 ? t.value.substring(dot + 1) : t.value;
                 return src.equals(t.value) || src.endsWith("." + t.value)
                         || (dot > 0 && src.equals(last))
-                        || (arg.kind == ArgKind.STRING_SABIT && arg.text.equals(last));
+                        || (arg.kind == ArgKind.STRING_LITERAL && arg.text.equals(last));
             }
             case LITERAL:
-                return arg.kind == ArgKind.STRING_SABIT && arg.text.equals(t.value);
+                return arg.kind == ArgKind.STRING_LITERAL && arg.text.equals(t.value);
             default:
                 break;
         }
         switch (t.value) {
             case "ANY": return true;
             case "STRING": return arg.kind.hasMessage;
-            case "STRING_LITERAL": return arg.kind == ArgKind.STRING_SABIT;
-            case "INT": return arg.kind == ArgKind.SAYI;
-            case "CAUSE": return arg.kind == ArgKind.SEBEP;
-            case "GETMESSAGE": return arg.kind == ArgKind.EXCEPTION_MESAJI;
-            case "CONST": return arg.kind == ArgKind.SABIT_REFERANS;
-            case "VAR": return arg.kind == ArgKind.DEGISKEN;
+            case "STRING_LITERAL": return arg.kind == ArgKind.STRING_LITERAL;
+            case "INT": return arg.kind == ArgKind.NUMBER;
+            case "CAUSE": return arg.kind == ArgKind.CAUSE;
+            case "GETMESSAGE": return arg.kind == ArgKind.EXCEPTION_MESSAGE;
+            case "CONST": return arg.kind == ArgKind.CONSTANT_REF;
+            case "VAR": return arg.kind == ArgKind.VARIABLE;
             default: return false;
         }
     }

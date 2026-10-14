@@ -280,7 +280,7 @@ public final class ExcelReportWriter {
                 text(x, c++, u.idValue);
                 text(x, c++, u.messageKind == null ? "" : u.messageKind.label);
                 text(x, c++, u.message);
-                text(x, c++, u.context);
+                text(x, c++, u.context.name());
                 text(x, c++, u.testCode ? "Evet" : "Hayır");
                 if (db) {
                     if (u.dbClassId == null) text(x, c++, ""); else num(x, c++, u.dbClassId.longValue());

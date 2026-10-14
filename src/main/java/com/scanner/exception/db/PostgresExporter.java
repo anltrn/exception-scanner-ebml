@@ -193,7 +193,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                         if (code == null) ps.setNull(i++, Types.INTEGER);
                         else ps.setInt(i++, code.intValue());
                         ps.setString(i++, u.message);
-                        ps.setString(i++, cut(u.context, 50));
+                        ps.setString(i++, u.context.name());
                         ps.setBoolean(i++, u.testCode);
                         ps.setString(i++, u.expression);
                         ps.setString(i++, cut(u.link, 2000));
