@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.mock</groupId>
+    <artifactId>mock-modules</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    <name>Mock modules (PMD complexity scan)</name>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.6</maven.compiler.source>
+        <maven.compiler.target>1.6</maven.compiler.target>
+    </properties>
+
+    <build>
+        <!-- Primary root unused; all module sources added via build-helper -->
+        <sourceDirectory>${project.basedir}/module-billing/src/main/java</sourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>add-mock-sources</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/module-catalog/src/main/java</source>
+                                <source>${project.basedir}/module-orders/src/main/java</source>
+                                <source>${project.basedir}/module-etl/src/main/java</source>
+                                <source>${project.basedir}/module-auth/src/main/java</source>
+                                <source>${project.basedir}/module-reporting/src/main/java</source>
+                                <source>${project.basedir}/module-integration/src/main/java</source>
+                                <source>${project.basedir}/module-v3fixtures/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>3.21.2</version>
+                <configuration>
+                    <targetJdk>1.6</targetJdk>
+                    <linkXRef>false</linkXRef>
+                    <failOnViolation>false</failOnViolation>
+                    <printFailingErrors>false</printFailingErrors>
+                    <rulesets>
+                        <ruleset>${project.basedir}/../config/pmd-ruleset-complexity.xml</ruleset>
+                    </rulesets>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

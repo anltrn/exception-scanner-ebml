@@ -1,5 +1,8 @@
 package com.scanner.exception;
 
+import com.scanner.exception.complexity.AnalysisReport;
+import com.scanner.exception.complexity.ComplexityRunner;
+import com.scanner.exception.complexity.RiskLevel;
 import com.scanner.exception.config.Config;
 import com.scanner.exception.db.DbMatcher;
 import com.scanner.exception.db.PostgresExporter;
@@ -25,6 +28,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
@@ -76,6 +80,7 @@ public final class ScannerApp {
             "  --db-note <metin>    Tarama kaydına açıklama ekle, ör. \"Ekim takibi\"",
             "  --ebml               Ekran/popup/region (.ebml), Jasper rapor (.dsxml) ve process (processdefinition.xml) tanımlarını da bul",
             "                       (--class verilmezse sadece bu envanter çıkarılır)",
+            "  --complexity         Taramadan sonra her repoda kod karmaşıklığı analizi yap (complexity.* ayarları)",
             "  --out <klasör>       Raporların yazılacağı klasör",
             "  --threads <n>        Aynı anda ayrıştırılacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
             "  --git-threads <n>    Aynı anda klonlanacak/güncellenecek repo sayısı (varsayılan 8)",
@@ -174,6 +179,9 @@ public final class ScannerApp {
                     break;
                 case "--ebml":
                     overrides.setProperty("ebml.enabled", "true");
+                    break;
+                case "--complexity":
+                    overrides.setProperty("complexity.enabled", "true");
                     break;
                 case "--lenient":
                     overrides.setProperty("match.lenient", "true");
@@ -366,11 +374,60 @@ public final class ScannerApp {
             log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor, %d process bulundu%s.", sc, pu, rg, rp, pr,
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
+        if (cfg.complexity.enabled) summary.put("complexityReports", analyzeComplexity(cfg, results, outDir.resolve("complexity")));
         summary.put("javaFiles", javaFiles);
         summary.put("usages", usages);
         summary.put("errors", errors);
         summary.put("reportDir", outDir.toAbsolutePath().toString());
         return summary;
+    }
+
+    /**
+     * Exception taramasından sonra klonlanmış her repoda kod karmaşıklığı analizi yapar. Her repo için
+     * complexity/<proje>/<repo>.json ve .md, hepsinin özeti için complexity/summary.md yazılır.
+     * Bir reponun analizi hata verirse diğerleri devam eder.
+     */
+    private static int analyzeComplexity(Config cfg, List<RepoResult> results, Path dir) {
+        log("Kod karmaşıklığı analizi başlıyor: " + results.size() + " repo");
+        ComplexityRunner runner = new ComplexityRunner(cfg.complexity);
+        StringBuilder md = new StringBuilder("# Kod karmaşıklığı özeti\n\n"
+                + "| Proje | Repo | Dosya | Metot | Kod satırı | Proje riski | Seviye | YÜKSEK | KRİTİK | p95 | Rapor |\n"
+                + "|---|---|--:|--:|--:|--:|---|--:|--:|--:|---|\n");
+        int done = 0, written = 0;
+        for (RepoResult r : results) {
+            done++;
+            RepoInfo repo = r.repo;
+            boolean cloned = repo.localPath != null && java.nio.file.Files.isDirectory(repo.localPath);
+            for (ScanError e : r.errors) if (e.stage == ScanError.Stage.CLONE) cloned = false;
+            if (!cloned) {
+                log(String.format("[%d/%d] %s: karmaşıklık analizi atlandı (repo indirilemedi)", done, results.size(), repo.id()));
+                continue;
+            }
+            String base = GitRunner.safe(repo.projectKey) + "/" + GitRunner.safe(repo.slug);
+            long started = System.currentTimeMillis();
+            try {
+                AnalysisReport.Summary s = runner.analyze(repo.localPath, dir.resolve(base + ".json"), dir.resolve(base + ".md"));
+                long high = s.methodRiskDistribution().getOrDefault(RiskLevel.HIGH, 0L);
+                long critical = s.methodRiskDistribution().getOrDefault(RiskLevel.CRITICAL, 0L);
+                log(String.format("[%d/%d] %s: %d dosya, %d metot, proje riski %.1f (%s), %d yüksek / %d kritik metot (%s)",
+                        done, results.size(), repo.id(), s.filesParsed(), s.methodCount(), s.projectRiskScore(),
+                        s.projectRiskLevel(), high, critical, seconds(System.currentTimeMillis() - started)));
+                md.append(String.format(Locale.ROOT, "| %s | %s | %d | %d | %d | %.1f | %s | %d | %d | %.1f | [%s](%s.md) |%n",
+                        repo.projectKey, repo.slug, s.filesParsed(), s.methodCount(), s.totalCodeLines(), s.projectRiskScore(),
+                        s.projectRiskLevel(), high, critical, s.methodRiskScoreP95(), repo.slug, base));
+                written++;
+            } catch (Exception | OutOfMemoryError e) {
+                log(String.format("[%d/%d] %s: HATA: karmaşıklık analizi yapılamadı: %s", done, results.size(), repo.id(), e));
+            }
+        }
+        try {
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Files.write(dir.resolve("summary.md"), md.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException e) {
+            log("HATA: karmaşıklık özeti yazılamadı: " + e.getMessage());
+        }
+        log("Kod karmaşıklığı raporları (" + written + " repo): " + dir.toAbsolutePath());
+        return written;
     }
 
     /**

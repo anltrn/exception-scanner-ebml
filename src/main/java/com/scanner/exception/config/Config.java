@@ -60,6 +60,7 @@ public final class Config {
     public final int maxFileKb;
     public final Db db;
     public final Ebml ebml;
+    public final Complexity complexity;
 
     /** Ekran (.ebml), region (.ebml), Jasper rapor (.dsxml) ve process envanteri ayarları (ebml.*) */
     public static final class Ebml {
@@ -155,6 +156,40 @@ public final class Config {
     }
 
     /** PostgreSQL envanter eşleştirmesi ve kayıt ayarları (db.*) */
+    /** Kod karmaşıklığı analizi (complexity.*): exception taramasından sonra klonlanmış repolar üzerinde çalışır */
+    public static final class Complexity {
+        public final boolean enabled;
+        public final com.github.javaparser.ParserConfiguration.LanguageLevel languageLevel;
+        public final Charset charset;
+        /** Raporlardaki en riskli metot sayısı */
+        public final int top;
+        /** true: JSON'da her metot; false: sadece dosya özetleri ve en riskli metotlar */
+        public final boolean fullDetail;
+        public final boolean duplicates;
+        /** Boş: varsayılan (v1) puanlama; ör. enterprise-java, strict-review, generated-tolerant */
+        public final String riskProfile;
+        public final List<String> include;
+        public final List<String> exclude;
+
+        Complexity(Properties p) {
+            enabled = Boolean.parseBoolean(get(p, "complexity.enabled", "false"));
+            String level = get(p, "complexity.language.level", "JAVA_17").trim().toUpperCase(Locale.ROOT);
+            languageLevel = com.github.javaparser.ParserConfiguration.LanguageLevel.valueOf(
+                    level.startsWith("JAVA_") ? level : "JAVA_" + level);
+            charset = Charset.forName(get(p, "complexity.encoding", "UTF-8").trim());
+            top = Integer.parseInt(get(p, "complexity.top", "20").trim());
+            String detail = get(p, "complexity.detail", "summary").trim().toLowerCase(Locale.ROOT);
+            if (!detail.equals("full") && !detail.equals("summary")) {
+                throw new IllegalArgumentException("complexity.detail full veya summary olmalı: " + detail);
+            }
+            fullDetail = detail.equals("full");
+            duplicates = Boolean.parseBoolean(get(p, "complexity.duplicates", "true"));
+            riskProfile = get(p, "complexity.risk.profile", "").trim();
+            include = list(get(p, "complexity.include", ""));
+            exclude = list(get(p, "complexity.exclude", ""));
+        }
+    }
+
     public static final class Db {
         public final boolean enabled;
         public final boolean dryRun;
@@ -273,6 +308,7 @@ public final class Config {
         maxFileKb = Integer.parseInt(get(p, "scan.max.file.kb", "2048"));
         db = new Db(p);
         ebml = new Ebml(p);
+        complexity = new Complexity(p);
         validate();
     }
 
