@@ -181,7 +181,7 @@ java -jar target/code-scanner-1.0.0.jar \
 | `outBag.put(GENERALERRORCODE.ERROR_CODE, e.getErrorCode());` | `put:GENERALERRORCODE.ERROR_CODE,getErrorCode()` veya `...,ANY` |
 | `outBag.put(GENERALERRORCODE.ERROR_CODE, 0);` | `put:GENERALERRORCODE.ERROR_CODE,0` veya `...,ANY` |
 
-Çağrılar Kullanımlar sayfasında exception kullanımlarıyla birlikte listelenir; "Exception / Çağrı" sütununda `outBag.put(...)` gibi görünür, "Bağlam" sütununda "metot çağrısı" yazar. Ayar dosyasında `call.N.method`, `call.N.scope`, `call.N.args` ve `call.N.name` ile tanımlanabilir. Sadece çağrı aranacaksa `--class` verilmesi gerekmez.
+Çağrılar Kullanımlar sayfasında exception kullanımlarıyla birlikte listelenir; "Exception / Çağrı" sütununda `outBag.put(...)` gibi görünür, "Bağlam" sütununda `METHOD_CALL` yazar. Ayar dosyasında `call.N.method`, `call.N.scope`, `call.N.args` ve `call.N.name` ile tanımlanabilir. Sadece çağrı aranacaksa `--class` verilmesi gerekmez.
 
 Bir kullanımın neden rapora girmediğini anlamak için desenleri geçici olarak kaldırıp (tüm kullanımlar raporlanır) Kullanımlar sayfasındaki koda bakabilirsiniz.
 
