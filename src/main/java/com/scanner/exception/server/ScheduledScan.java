@@ -1,6 +1,8 @@
 package com.scanner.exception.server;
 
 import com.scanner.exception.ScannerApp;
+import com.scanner.exception.config.Config;
+import com.scanner.exception.db.DeepScanCheck;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -76,11 +78,42 @@ class ScheduledScan {
             return;
         }
         try {
+            if (!deepScanFresh(service.defaultConfig())) return;
             ScanJob job = service.submit(null, ScanJob.Trigger.SCHEDULE);
             ScannerApp.log("Otomatik tarama sıraya alındı: " + job.id);
         } catch (Exception e) {
             ScannerApp.log("HATA: otomatik tarama başlatılamadı: " + e.getMessage());
         }
+    }
+
+    /**
+     * Deep-scanner son db.deep.scan.max.age.days gün içinde başarıyla bitmediyse envanter güncel değildir:
+     * tarama eski sınıf/metot id'leriyle eşleşeceği için yapılmaz. Kontrol edilemezse de yapılmaz.
+     */
+    private boolean deepScanFresh(Config cfg) {
+        Config.Db db = cfg.db;
+        if (db.deepScanMaxAgeDays == 0) return true;
+        String table = db.deepScanTable;
+        if (db.url.isEmpty()) {
+            ScannerApp.log("Otomatik tarama pas geçildi: deep-scanner taraması kontrol edilemedi (db.url boş). "
+                    + "Kontrolü kapatmak için db.deep.scan.max.age.days=0");
+            return false;
+        }
+        try {
+            DeepScanCheck.Result r = DeepScanCheck.check(db);
+            if (r.fresh) {
+                ScannerApp.log("Deep-scanner taraması güncel (son başarılı: " + r.lastSuccess + ")");
+                return true;
+            }
+            ScannerApp.log("Deep-scanner taraması güncel olmadığı için hata taraması pas geçildi: " + table
+                    + " tablosunda son " + db.deepScanMaxAgeDays + " gün içinde " + db.deepScanStatusColumn + "="
+                    + db.deepScanSuccessStatus + " kayıt yok (son başarılı: "
+                    + (r.lastSuccess == null ? "hiç yok" : r.lastSuccess) + ")");
+        } catch (Exception e) {
+            ScannerApp.log("Otomatik tarama pas geçildi: deep-scanner taraması kontrol edilemedi (" + table + "): "
+                    + e.getMessage());
+        }
+        return false;
     }
 
     Info info() {

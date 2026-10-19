@@ -41,13 +41,17 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
     public PostgresExporter(Config cfg) throws SQLException {
         this.cfg = cfg;
         this.db = cfg.db;
+        this.con = connect(db);
+        this.con.setAutoCommit(false);
+    }
+
+    static Connection connect(Config.Db db) throws SQLException {
         Properties props = new Properties();
         if (!db.user.isEmpty()) props.setProperty("user", db.user);
         if (!db.password.isEmpty()) props.setProperty("password", db.password);
         props.setProperty("ApplicationName", "code-scanner");
         props.setProperty("connectTimeout", "20");
-        this.con = DriverManager.getConnection(db.url, props);
-        this.con.setAutoCommit(false);
+        return DriverManager.getConnection(db.url, props);
     }
 
     // =====================================================================

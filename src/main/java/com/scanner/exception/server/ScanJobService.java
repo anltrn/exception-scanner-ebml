@@ -101,8 +101,7 @@ class ScanJobService {
 
     /** İsteği doğrular (hatalıysa IllegalArgumentException) ve sıraya koyar. */
     synchronized ScanJob submit(ScanRequest request, ScanJob.Trigger trigger) throws IOException {
-        if (request == null) request = new ScanRequest(null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null);
+        if (request == null) request = emptyRequest();
         Properties overrides = overrides(request);
         Config cfg = Config.load(baseConfig(), overrides); // ayar hatası varsa hemen 400 dönsün
 
@@ -230,6 +229,16 @@ class ScanJobService {
         if (System.getenv("BITBUCKET_TOKEN") != null) out.put("bitbucket.token", "****** (BITBUCKET_TOKEN)");
         if (System.getenv("DB_PASSWORD") != null) out.put("db.password", "****** (DB_PASSWORD)");
         return out;
+    }
+
+    /** Boş istekle (otomatik taramadaki gibi) yapılacak taramanın ayarları */
+    Config defaultConfig() throws IOException {
+        return Config.load(baseConfig(), overrides(emptyRequest()));
+    }
+
+    private static ScanRequest emptyRequest() {
+        return new ScanRequest(null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null);
     }
 
     private Properties overrides(ScanRequest request) {

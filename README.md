@@ -335,6 +335,8 @@ Sunucu ayakta olduğu sürece haftada bir, sunucudaki `scanner.properties` ile k
 
 Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı vb.) o haftanın taraması kaçmaz: açılışta, son planlanan zamandan sonra otomatik tarama yapılmadığı görülürse hemen başlatılır. Önceki otomatik tarama hâlâ sürüyorsa yenisi başlatılmaz.
 
+Otomatik tarama, sınıf/metot envanterini dolduran deep-scanner'ın güncel olmasını bekler. Başlamadan önce `env.scan_run` tablosunda `status = 'SUCCESS'` olan ve `finished_at` değeri son `db.deep.scan.max.age.days` gün (varsayılan 1) içinde kalan bir kayıt aranır. Böyle bir kayıt yoksa tarama yapılmaz ve logda `Deep-scanner taraması güncel olmadığı için hata taraması pas geçildi` yazar (son başarılı çalışmanın zamanıyla). Veritabanına bağlanılamazsa ya da `db.url` boşsa da tarama pas geçilir. Pas geçilen tarama o hafta tekrar denenmez; pod yeniden başlarsa kaçırılmış tarama gibi yeniden denenir. Kontrol için `db.url` yeterlidir, `db.enabled` gerekmez. `db.deep.scan.max.age.days=0` kontrolü kapatır. Tablo, sütun ve durum değeri `db.deep.scan.table`, `db.deep.scan.status.column`, `db.deep.scan.finished.column` ve `db.deep.scan.success.status` ile değiştirilebilir. Swagger'dan elle başlatılan taramalar kontrol edilmez.
+
 Zamanı değiştirmek için `SCANNER_SCHEDULE_CRON` kullanılır. Format Spring cron'dur: `saniye dakika saat gün ay haftanın-günü`. Örneğin `0 30 1 * * MON` her Pazartesi 01:30 demektir. `-` verilirse otomatik tarama kapanır.
 
 Sunucu ayarları ortam değişkenleriyle verilir:

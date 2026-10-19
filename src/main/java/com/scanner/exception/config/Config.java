@@ -178,6 +178,13 @@ public final class Config {
         public final List<String> constructorNames;
         public final boolean insertUnmatched;
         public final String note;
+        /** Otomatik tarama ön koşulu: deep-scanner'ın çalışma kayıtları (db.deep.scan.*) */
+        public final String deepScanTable;
+        public final String deepScanStatusColumn;
+        public final String deepScanFinishedColumn;
+        public final String deepScanSuccessStatus;
+        /** Son bu kadar gün içinde başarılı deep-scanner kaydı yoksa otomatik tarama yapılmaz; 0 kontrolü kapatır */
+        public final int deepScanMaxAgeDays;
 
         Db(Properties p) {
             enabled = Boolean.parseBoolean(get(p, "db.enabled", "false"));
@@ -204,6 +211,15 @@ public final class Config {
             constructorNames = list(get(p, "db.method.constructor.names", "<init>,{class}"));
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));
             note = get(p, "db.note", "");
+            deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");
+            deepScanStatusColumn = ident(get(p, "db.deep.scan.status.column", "status"), "db.deep.scan.status.column");
+            deepScanFinishedColumn = ident(get(p, "db.deep.scan.finished.column", "finished_at"),
+                    "db.deep.scan.finished.column");
+            deepScanSuccessStatus = get(p, "db.deep.scan.success.status", "SUCCESS").trim();
+            deepScanMaxAgeDays = Integer.parseInt(get(p, "db.deep.scan.max.age.days", "1").trim());
+            if (deepScanMaxAgeDays < 0) {
+                throw new IllegalArgumentException("db.deep.scan.max.age.days negatif olamaz: " + deepScanMaxAgeDays);
+            }
             if (enabled && url.isEmpty()) {
                 throw new IllegalArgumentException("db.enabled=true için db.url gerekli. "
                         + "Örnek: db.url=jdbc:postgresql://localhost:5432/envanter");
