@@ -15,7 +15,7 @@ public class ServerSettings {
     /** Klonlanan repoların tutulduğu klasör (taramalar arasında önbellek olarak kalır) */
     private String workDir = "./scannedRepos";
     /** Her taramanın raporları bu klasörün altında tarama numarasıyla bir klasöre yazılır */
-    private String outputDir = "./executeReports";
+    private String outputDir = "./scanReports";
     /** Doluysa /api altındaki isteklerde X-API-Key başlığı bu değer olmalı */
     private String apiKey = "";
     /** Otomatik tarama zamanı (Spring cron: saniye dakika saat gün ay haftanın-günü); "-" kapatır */

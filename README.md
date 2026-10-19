@@ -94,7 +94,7 @@ Parametreler ayar dosyasındaki değerlerin üzerine yazar; ayar dosyası yoksa 
 | `--lenient` | Import ve paket kontrolü yapmadan sadece sınıf adına göre eşleştir |
 | `--threads <n>` | Aynı anda ayrıştırılacak repo sayısı (varsayılan 4) |
 | `--git-threads <n>` | Aynı anda klonlanacak/güncellenecek repo sayısı (varsayılan 8) |
-| `--out <klasör>` | Raporların yazılacağı klasör (varsayılan `./executeReports`) |
+| `--out <klasör>` | Raporların yazılacağı klasör (varsayılan `./scanReports`) |
 | `--console-limit <n>` | Konsola yazılacak en fazla kullanım (varsayılan 200, `0` = yazma) |
 | `--help` | Yardım |
 
@@ -344,7 +344,7 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 | `PORT` | `8080` | |
 | `SCANNER_CONFIG` | `scanner.properties` | Temel ayar dosyası |
 | `SCANNER_WORK_DIR` | `./scannedRepos` | Klonların tutulduğu klasör |
-| `SCANNER_OUTPUT_DIR` | `./executeReports` | Raporların yazıldığı klasör |
+| `SCANNER_OUTPUT_DIR` | `./scanReports` | Raporların yazıldığı klasör |
 | `SCANNER_SCHEDULE_CRON` | `0 0 2 * * SUN` | Haftalık otomatik tarama zamanı; `-` kapatır |
 | `SCANNER_SCHEDULE_ZONE` | `Europe/Istanbul` | Cron'un saat dilimi |
 | `SCANNER_API_KEY` | boş | Doluysa `/api` istekleri `X-API-Key` başlığını ister (Swagger'da **Authorize**) |

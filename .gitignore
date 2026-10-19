@@ -1,4 +1,4 @@
 target/
 scannedRepos/
-executeReports/
+scanReports/
 .DS_Store

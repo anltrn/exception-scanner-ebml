@@ -236,7 +236,7 @@ public final class Config {
         sslInsecure = Boolean.parseBoolean(get(p, "ssl.insecure", "false"));
         gitTimeoutMinutes = Integer.parseInt(get(p, "git.timeout.minutes", "15"));
         workDir = Paths.get(get(p, "work.dir", "./scannedRepos"));
-        outputDir = Paths.get(get(p, "output.dir", "./executeReports"));
+        outputDir = Paths.get(get(p, "output.dir", "./scanReports"));
         String local = get(p, "local.dir", "");
         localDir = local.isEmpty() ? null : Paths.get(local);
         gitUrls = list(get(p, "git.urls", ""));
