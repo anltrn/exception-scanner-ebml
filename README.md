@@ -353,77 +353,20 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 | `EXTRA_CA_BUNDLE` | boş | Şirket CA sertifikaları (PEM); Java'ya ve git'e eklenir |
 | `BITBUCKET_USERNAME`, `BITBUCKET_TOKEN`, `DB_USER`, `DB_PASSWORD` | | Komut satırındaki gibi |
 
-## OpenShift
+## Docker
 
-`Dockerfile` ve `openshift/` klasörü OpenShift'te çalıştırmak için hazırdır. İmaj Red Hat UBI 9 OpenJDK 17 üzerine kurulur, içinde git vardır ve OpenShift'in rastgele kullanıcı ID'siyle çalışır.
-
-```bash
-oc project <namespace>
-
-# 1. Gizli değerler (depoya eklemeyin; örnek: openshift/secret.example.yaml)
-oc create secret generic code-scanner-secrets \
-  --from-literal=BITBUCKET_TOKEN=<token> \
-  --from-literal=SCANNER_API_KEY=<rastgele-uzun-değer>
-
-# 2. Ayarlar: openshift/scanner.properties dosyasında bitbucket.url vb. düzenleyin, sonra
-oc apply -k openshift/
-
-# 3. İmajı OpenShift içinde derleyin (Docker stratejisi; yeni imaj gelince pod kendiliğinden yenilenir)
-oc start-build code-scanner --from-dir=. --follow
-
-# 4. Swagger adresi
-echo "https://$(oc get route code-scanner -o jsonpath='{.spec.host}')/swagger-ui.html"
-```
-
-Oluşan kaynaklar:
-
-| Dosya | İçerik |
-|---|---|
-| `build.yaml` | ImageStream ve BuildConfig |
-| `deployment.yaml` | Tek pod, sağlık kontrolleri, haftalık tarama zamanı, 2–4 GiB bellek, root olmayan güvenlik ayarları |
-| `pvc.yaml` | 20 GiB disk: klonlar (`/data/work`) ve raporlar (`/data/reports`) |
-| `service.yaml`, `route.yaml` | HTTPS (edge) Route, büyük rapor indirmeleri için 5 dakika zaman aşımı |
-| `scanner.properties` | `code-scanner-config` ConfigMap'i; değişince pod yeniden başlar |
-
-Notlar:
-
-- **Şirket içi registry / Maven mirror:** İmajlar `BUILD_IMAGE` ve `RUNTIME_IMAGE` build argümanlarıyla değiştirilebilir (`build.yaml` içinde örnek var).
-- **Şirket CA sertifikası:** Bitbucket'ın sertifikası tanınmıyorsa boş bir ConfigMap oluşturup `oc label configmap trusted-ca config.openshift.io/inject-trusted-cabundle=true` ile etiketleyin. Ardından `deployment.yaml` içindeki `ca-bundle` satırlarını ve `EXTRA_CA_BUNDLE` değişkenini açın. Kendi PEM dosyanızı da ConfigMap olarak bağlayabilirsiniz.
-- **Bellek:** Heap, konteyner limitinin %60'ı olarak ayarlanır (`MAX_RAM_PERCENTAGE`); kalan bellek paralel çalışan git işlemlerine kalır. Çok büyük repolarda limiti artırın veya `threads` değerini düşürün.
-- **Sürekli çalışma:** Pod sürekli ayakta kalır, haftalık tarama pod içindeki zamanlayıcıyla yapılır; ayrıca CronJob gerekmez. Pod çökerse OpenShift yeniden başlatır.
-- **Tek pod:** Tarama geçmişi pod'da tutulduğu ve disk ReadWriteOnce olduğu için `replicas: 1` ve `Recreate` stratejisi kullanılır.
-- **Erişim:** Route dışarı açıksa `SCANNER_API_KEY` mutlaka tanımlanmalı; Swagger ve sağlık kontrolleri anahtarsız açılır, `/api` istekleri anahtar ister.
-
-### `exception-scanner` adıyla kurulmuş ortamdan geçiş
-
-Kaynakların adı `exception-scanner` iken `code-scanner` oldu. `oc apply -k openshift/` eski kaynakları değiştirmez, yeni adla yenilerini oluşturur: yeni Secret ve boş bir disk (PVC) gerekir, Route adresi de değişir (`code-scanner-<namespace>...`). Klonlanan repolar yeni diskte ilk taramada kendiliğinden oluşur; önceki taramaların raporları ve tarama listesi isteğe bağlı olarak taşınabilir:
+`Dockerfile` jar'ı derleyip sunucu modunda çalıştıran bir imaj üretir; içinde git vardır. Ayar olarak depodaki `scanner.properties` imaja kopyalanır, klonlar `/data/work`, raporlar `/data/reports` altına yazılır.
 
 ```bash
-oc project <namespace>
-
-# 1. Önceki taramaların raporlarını yedekleyin (istenirse)
-POD=$(oc get pod -l app=exception-scanner -o jsonpath='{.items[0].metadata.name}')
-oc rsync $POD:/data/reports ./rapor-yedek
-
-# 2. Eski pod'u durdurun, Secret'ı yeni adla kopyalayın
-oc scale deployment/exception-scanner --replicas=0
-oc extract secret/exception-scanner-secrets --to=secret-tmp
-oc create secret generic code-scanner-secrets --from-file=secret-tmp && rm -rf secret-tmp
-
-# 3. Yeni kaynakları kurup imajı derleyin
-oc apply -k openshift/
-oc start-build code-scanner --from-dir=. --follow
-
-# 4. Raporları yeni diske yükleyip pod'u yeniden başlatın (tarama listesi açılışta rapor klasöründen okunur)
-POD=$(oc get pod -l app=code-scanner -o jsonpath='{.items[0].metadata.name}')
-oc rsync ./rapor-yedek/reports/ $POD:/data/reports/
-oc rollout restart deployment/code-scanner
-
-# 5. Yeni kurulum çalışıyorsa eski kaynakları silin (eski disk ve içindeki veriler de silinir)
-oc delete deployment/exception-scanner service/exception-scanner route/exception-scanner \
-  buildconfig/exception-scanner imagestream/exception-scanner pvc/exception-scanner-data secret/exception-scanner-secrets
-oc delete configmap -l app.kubernetes.io/name=exception-scanner
+docker build -t code-scanner .
+docker run -d -p 8080:8080 -v code-scanner-data:/data \
+  -e BITBUCKET_TOKEN=<token> -e SCANNER_API_KEY=<rastgele-uzun-değer> \
+  -v "$PWD/scanner.properties:/app/scanner.properties" \
+  code-scanner
+# Swagger: http://localhost:8080/swagger-ui.html
 ```
+
+Heap konteyner bellek limitinin %75'i olarak ayarlanır. Bitbucket'ın sertifikası tanınmıyorsa PEM dosyasını bağlayıp `EXTRA_CA_BUNDLE` (Java için) ve `GIT_SSL_CAINFO` (git için) ile verin (git bu dosyayı sistem sertifikalarının yerine kullanır; sistem paketiyle birleştirilmiş bir dosya verin).
 
 ## Paralel işleme
 
@@ -435,7 +378,7 @@ oc delete configmap -l app.kubernetes.io/name=exception-scanner
 
 Büyük repolar da kendi içinde paralel taranır: bir reponun Java dosyaları işlemci çekirdekleri arasında paylaştırılarak ayrıştırılır. Bu yüzden binlerce dosyalı tek bir repo, diğer repolar bittikten sonra tek başına uzun süre çalışmaz. Aranan exception'ın alt sınıfları bulunurken de tüm dosyalar değil, sadece o exception'ın (veya bulunan alt sınıflarının) adını içeren dosyalar ayrıştırılır.
 
-Dosya ayrıştırma zaten tüm çekirdekleri kullandığı için `threads` değerini çekirdek sayısından çok yüksek vermek taramayı hızlandırmaz; sadece bellek kullanımını artırır. Çekirdek sayısı kadar (OpenShift'te CPU limiti kadar) vermeniz yeterlidir. `git.threads` ağ işi olduğu için daha yüksek tutulabilir.
+Dosya ayrıştırma zaten tüm çekirdekleri kullandığı için `threads` değerini çekirdek sayısından çok yüksek vermek taramayı hızlandırmaz; sadece bellek kullanımını artırır. Çekirdek sayısı kadar (konteynerde CPU limiti kadar) vermeniz yeterlidir. `git.threads` ağ işi olduğu için daha yüksek tutulabilir.
 
 Repolar `work.dir` altında saklandığı için ilk taramadan sonraki taramalarda sadece değişiklikler çekilir ve tarama çok daha hızlı biter. `git.threads` değerini Bitbucket sunucusunu zorlamayacak kadar tutun.
 

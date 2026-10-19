@@ -16,7 +16,7 @@
     <artifactId>code-scanner</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
-    <name>Exception Kullanim Tarayici</name>
+    <name>Code Scanner</name>
 
     <properties>
         <!-- Uygulamanın kendi Java sürümü; taranan kodun Java 6 olması sorun değildir -->
@@ -30,7 +30,7 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-        <!-- OpenShift liveness / readiness kontrolleri: /actuator/health/liveness, /actuator/health/readiness -->
+        <!-- Konteyner liveness / readiness kontrolleri: /actuator/health/liveness, /actuator/health/readiness -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>

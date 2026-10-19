@@ -12,8 +12,8 @@ import java.util.Collection;
 
 /**
  * EXTRA_CA_BUNDLE ortam değişkeninde verilen PEM dosyasındaki sertifikaları (ör. şirket CA'sı veya
- * OpenShift'in güvenilen CA paketi) JDK'nın varsayılan sertifikalarına ekler. Bitbucket REST
- * çağrıları bu truststore'u kullanır; git için aynı dosya entrypoint.sh'de GIT_SSL_CAINFO'ya eklenir.
+ * platformun güvenilen CA paketi) JDK'nın varsayılan sertifikalarına ekler. Bitbucket REST
+ * çağrıları bu truststore'u kullanır; git için aynı dosya GIT_SSL_CAINFO ile ayrıca verilmelidir.
  */
 final class ExtraCaBundle {
 
