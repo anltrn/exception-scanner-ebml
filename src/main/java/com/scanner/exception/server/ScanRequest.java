@@ -26,6 +26,12 @@ public record ScanRequest(
                 + "Verilirse ayar dosyasındakinin yerine geçer.", example = "[\"z_atil_*\", \"nova-*\"]")
         List<String> excludeRepos,
 
+        @Schema(description = "Sadece bu repolar taranır (bitbucket.include.repos): PROJE/repo sadece o projeyi daraltır, "
+                + "listede adı geçmeyen projelerin tüm repoları alınır; proje adı olmayan kalıp tüm projelere uygulanır. "
+                + "excludeRepos yine uygulanır. Verilirse ayar dosyasındakinin yerine geçer.",
+                example = "[\"A/repo1\", \"A/repo2\"]")
+        List<String> includeRepos,
+
         @Schema(description = "source=git için taranacak git adresleri (--git)")
         List<String> gitUrls,
 
@@ -90,6 +96,7 @@ public record ScanRequest(
         Properties p = ScannerApp.parseArgs(args.toArray(new String[0])).overrides;
         if (source != null && !source.isBlank()) p.setProperty("source", source.trim());
         if (projects != null) p.setProperty("bitbucket.projects", String.join(",", projects));
+        if (includeRepos != null) p.setProperty("bitbucket.include.repos", String.join(",", includeRepos));
         if (excludeRepos != null) p.setProperty("bitbucket.exclude.repos", String.join(",", excludeRepos));
         if (properties != null) {
             for (Map.Entry<String, String> e : properties.entrySet()) {

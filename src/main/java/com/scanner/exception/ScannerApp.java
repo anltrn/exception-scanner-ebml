@@ -233,9 +233,10 @@ public final class ScannerApp {
         else all = new BitbucketClient(cfg).listRepositories();
         List<RepoInfo> repos = new ArrayList<RepoInfo>();
         for (RepoInfo r : all) {
-            if (cfg.isExcluded(r)) continue;
+            if (!cfg.isIncluded(r) || cfg.isExcluded(r)) continue;
             repos.add(r);
         }
+        for (String e : cfg.unmatchedIncludes(all)) log("Uyarı: bitbucket.include.repos içindeki '" + e + "' hiçbir repoyla eşleşmedi");
         log(repos.size() + " repo taranacak.");
         summary.put("repositories", repos.size());
         summary.put("excludedRepositories", all.size() - repos.size());
