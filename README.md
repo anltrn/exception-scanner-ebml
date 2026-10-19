@@ -329,15 +329,15 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 
 Taramalar sırayla çalışır (aynı anda tek tarama isteği); sonradan gelenler sırada bekler. Bir taramanın içindeki projeler ve repolar ise paralel işlenir (bkz. [Paralel işleme](#paralel-işleme)). Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
 
-### Haftalık otomatik tarama
+### Günlük otomatik tarama
 
-Sunucu ayakta olduğu sürece haftada bir, sunucudaki `scanner.properties` ile kendiliğinden tarar (Swagger'dan `{}` gönderilmiş gibi). Varsayılan zaman her Pazar 02:00'dir (İstanbul saati). Swagger'da `GET /api/schedule` bir sonraki çalışma zamanını gösterir. Otomatik taramalar listede `"trigger": "SCHEDULE"`, Swagger/REST ile başlatılanlar `"API"` olarak görünür. Bunların dışında istediğiniz zaman `POST /api/scans` ile tarama başlatabilirsiniz.
+Sunucu ayakta olduğu sürece günde bir kez, sunucudaki `scanner.properties` ile kendiliğinden tarar (Swagger'dan `{}` gönderilmiş gibi). Varsayılan zaman her gün 12:30'dur (İstanbul saati). Swagger'da `GET /api/schedule` bir sonraki çalışma zamanını gösterir. Otomatik taramalar listede `"trigger": "SCHEDULE"`, Swagger/REST ile başlatılanlar `"API"` olarak görünür. Bunların dışında istediğiniz zaman `POST /api/scans` ile tarama başlatabilirsiniz.
 
-Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı vb.) o haftanın taraması kaçmaz: açılışta, son planlanan zamandan sonra otomatik tarama yapılmadığı görülürse hemen başlatılır. Önceki otomatik tarama hâlâ sürüyorsa yenisi başlatılmaz.
+Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı vb.) o günün taraması kaçmaz: açılışta, son planlanan zamandan sonra otomatik tarama yapılmadığı görülürse hemen başlatılır. Önceki otomatik tarama hâlâ sürüyorsa yenisi başlatılmaz.
 
-Otomatik tarama, sınıf/metot envanterini dolduran deep-scanner'ın güncel olmasını bekler. Başlamadan önce `env.scan_run` tablosunda `status = 'SUCCESS'` olan ve `finished_at` değeri son `db.deep.scan.max.age.days` gün (varsayılan 1) içinde kalan bir kayıt aranır. Böyle bir kayıt yoksa tarama yapılmaz ve logda `Deep-scanner taraması güncel olmadığı için hata taraması pas geçildi` yazar (son başarılı çalışmanın zamanıyla). Veritabanına bağlanılamazsa ya da `db.url` boşsa da tarama pas geçilir. Pas geçilen tarama o hafta tekrar denenmez; pod yeniden başlarsa kaçırılmış tarama gibi yeniden denenir. Kontrol için `db.url` yeterlidir, `db.enabled` gerekmez. `db.deep.scan.max.age.days=0` kontrolü kapatır. Tablo, sütun ve durum değeri `db.deep.scan.table`, `db.deep.scan.status.column`, `db.deep.scan.finished.column` ve `db.deep.scan.success.status` ile değiştirilebilir. Swagger'dan elle başlatılan taramalar kontrol edilmez.
+Otomatik tarama, sınıf/metot envanterini dolduran deep-scanner'ın güncel olmasını bekler. Başlamadan önce `env.scan_run` tablosunda `status = 'SUCCESS'` olan ve `finished_at` değeri son `db.deep.scan.max.age.days` gün (varsayılan 1) içinde kalan bir kayıt aranır. Böyle bir kayıt yoksa tarama yapılmaz ve logda `Deep-scanner taraması güncel olmadığı için hata taraması pas geçildi` yazar (son başarılı çalışmanın zamanıyla). Veritabanına bağlanılamazsa ya da `db.url` boşsa da tarama pas geçilir. Pas geçilen tarama o gün tekrar denenmez, ertesi gün 12:30'da yeniden denenir; pod yeniden başlarsa kaçırılmış tarama gibi yeniden denenir. Kontrol için `db.url` yeterlidir, `db.enabled` gerekmez. `db.deep.scan.max.age.days=0` kontrolü kapatır. Tablo, sütun ve durum değeri `db.deep.scan.table`, `db.deep.scan.status.column`, `db.deep.scan.finished.column` ve `db.deep.scan.success.status` ile değiştirilebilir. Swagger'dan elle başlatılan taramalar kontrol edilmez.
 
-Zamanı değiştirmek için `SCANNER_SCHEDULE_CRON` kullanılır. Format Spring cron'dur: `saniye dakika saat gün ay haftanın-günü`. Örneğin `0 30 1 * * MON` her Pazartesi 01:30 demektir. `-` verilirse otomatik tarama kapanır.
+Zamanı değiştirmek için `SCANNER_SCHEDULE_CRON` kullanılır. Format Spring cron'dur: `saniye dakika saat gün ay haftanın-günü`. Örneğin `0 30 12 * * *` her gün 12:30, `0 30 1 * * MON` her Pazartesi 01:30 demektir. `-` verilirse otomatik tarama kapanır.
 
 Sunucu ayarları ortam değişkenleriyle verilir:
 
@@ -347,7 +347,7 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 | `SCANNER_CONFIG` | `scanner.properties` | Temel ayar dosyası |
 | `SCANNER_WORK_DIR` | `./scannedRepos` | Klonların tutulduğu klasör |
 | `SCANNER_OUTPUT_DIR` | `./scanReports` | Raporların yazıldığı klasör |
-| `SCANNER_SCHEDULE_CRON` | `0 0 2 * * SUN` | Haftalık otomatik tarama zamanı; `-` kapatır |
+| `SCANNER_SCHEDULE_CRON` | `0 30 12 * * *` | Günlük otomatik tarama zamanı; `-` kapatır |
 | `SCANNER_SCHEDULE_ZONE` | `Europe/Istanbul` | Cron'un saat dilimi |
 | `SCANNER_API_KEY` | boş | Doluysa `/api` istekleri `X-API-Key` başlığını ister (Swagger'da **Authorize**) |
 | `EXTRA_CA_BUNDLE` | boş | Şirket CA sertifikaları (PEM); Java'ya ve git'e eklenir |
@@ -431,4 +431,4 @@ Kaynaklar `src/main/java/com/scanner/exception` altında, sorumluluğa göre pak
 | `scan` | Java ve EBML dosyalarının taranması, desen eşleştirme: `JavaSourceScanner`, `EbmlScanner`, `UsagePattern`, `ArgumentClassifier`, `TypeMatcher` ... |
 | `db` | PostgreSQL envanteriyle eşleştirme ve kayıt: `DbMatcher`, `PostgresExporter` |
 | `report` | Excel raporu: `ExcelReportWriter` |
-| `server` | REST API ve Swagger (Spring Boot): `ScanServerApplication`, `ScanController`, `ScanJobService`, haftalık tarama ... |
+| `server` | REST API ve Swagger (Spring Boot): `ScanServerApplication`, `ScanController`, `ScanJobService`, günlük tarama ... |

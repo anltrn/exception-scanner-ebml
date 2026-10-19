@@ -19,7 +19,7 @@ public class ServerSettings {
     /** Doluysa /api altındaki isteklerde X-API-Key başlığı bu değer olmalı */
     private String apiKey = "";
     /** Otomatik tarama zamanı (Spring cron: saniye dakika saat gün ay haftanın-günü); "-" kapatır */
-    private String scheduleCron = "0 0 2 * * SUN";
+    private String scheduleCron = "0 30 12 * * *";
     /** Cron'un yorumlandığı saat dilimi */
     private String scheduleZone = "Europe/Istanbul";
 

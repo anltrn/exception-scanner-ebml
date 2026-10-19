@@ -124,7 +124,7 @@ class ScanController {
 
     @GetMapping("/api/schedule")
     @Operation(summary = "Otomatik tarama zamanı",
-            description = "Haftalık otomatik taramanın cron ifadesi ve bir sonraki çalışma zamanı. "
+            description = "Günlük otomatik taramanın cron ifadesi ve bir sonraki çalışma zamanı. "
                     + "SCANNER_SCHEDULE_CRON ile değiştirilir, \"-\" ile kapatılır.")
     ScheduledScan.Info schedule() {
         return schedule.info();

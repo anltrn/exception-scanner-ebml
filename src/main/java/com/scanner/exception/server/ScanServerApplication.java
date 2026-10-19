@@ -27,7 +27,7 @@ import java.util.List;
                 description = "Bitbucket, git adresi veya yerel klasördeki Java kodunda exception "
                         + "kullanımlarını tarar; Excel raporu üretir. Taramalar sırayla, arka planda çalışır: "
                         + "POST /api/scans ile başlatın, GET /api/scans/{id} ile durumu izleyin, raporu "
-                        + "GET /api/scans/{id}/report ile indirin. Ayrıca haftada bir sunucudaki ayarlarla "
+                        + "GET /api/scans/{id}/report ile indirin. Ayrıca her gün sunucudaki ayarlarla "
                         + "otomatik tarama yapılır (GET /api/schedule)."),
         security = @SecurityRequirement(name = "apiKey"))
 @SecurityScheme(name = "apiKey", type = SecuritySchemeType.APIKEY, in = SecuritySchemeIn.HEADER,

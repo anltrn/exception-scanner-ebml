@@ -15,7 +15,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 /**
- * Haftalık otomatik tarama. Sunucudaki scanner.properties ile, Swagger'dan boş istek ({})
+ * Günlük otomatik tarama (varsayılan her gün 12:30). Sunucudaki scanner.properties ile, Swagger'dan boş istek ({})
  * gönderilmiş gibi tarar. Zaman SCANNER_SCHEDULE_CRON / SCANNER_SCHEDULE_ZONE ile değişir.
  */
 @Component
@@ -37,7 +37,7 @@ class ScheduledScan {
     }
 
     /**
-     * Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı) o haftanın taraması kaçmasın:
+     * Pod planlanan saatte kapalıysa (yeniden dağıtım, node bakımı) o günün taraması kaçmasın:
      * son planlanan zamandan sonra otomatik tarama yapılmamışsa açılışta hemen başlatılır.
      * Hiç otomatik tarama yapılmamışsa (ilk kurulum) beklenir, planlanan saatte çalışır.
      */
@@ -138,7 +138,7 @@ class ScheduledScan {
     static class Info {
         @Schema(description = "Açık mı")
         public boolean enabled;
-        @Schema(description = "Spring cron ifadesi (saniye dakika saat gün ay haftanın-günü)", example = "0 0 2 * * SUN")
+        @Schema(description = "Spring cron ifadesi (saniye dakika saat gün ay haftanın-günü)", example = "0 30 12 * * *")
         public String cron;
         @Schema(example = "Europe/Istanbul")
         public String zone;

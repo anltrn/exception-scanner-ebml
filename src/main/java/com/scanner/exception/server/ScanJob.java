@@ -16,7 +16,7 @@ public class ScanJob {
     @Schema(description = "Tarama numarası", example = "20261009-142233-a1b2")
     public String id;
     public Status status;
-    @Schema(description = "API: Swagger / REST ile başlatıldı, SCHEDULE: haftalık otomatik tarama")
+    @Schema(description = "API: Swagger / REST ile başlatıldı, SCHEDULE: günlük otomatik tarama")
     public Trigger trigger;
     public Instant createdAt;
     public Instant startedAt;
