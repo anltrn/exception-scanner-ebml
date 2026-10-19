@@ -169,7 +169,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 
 ### Kurulum
 
-`sql/code_scanner_postgres.sql` dosyasını veritabanında bir kez çalıştırın (ilk kurulum). Tüm tabloları ve görünümleri, exception kullanımlarını ve ekran/rapor/process envanterini birlikte oluşturur. Exception tarafı için oluşan nesneler:
+`sql/exception_scanner_postgres.sql` dosyasını veritabanında bir kez çalıştırın (ilk kurulum). Tüm tabloları ve görünümleri, exception kullanımlarını ve ekran/rapor/process envanterini birlikte oluşturur. Exception tarafı için oluşan nesneler:
 
 | Nesne | İçerik |
 |---|---|
@@ -238,7 +238,7 @@ Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.
 
 ### Kurulum ve çalıştırma
 
-Tablolar (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`, `env.all_processes` ve `env.v_ebml_inventory_latest` görünümü) `sql/code_scanner_postgres.sql` ile oluşur. Exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşırlar; ekran, popup, region, rapor ve process sayıları bu tablonun sütunlarındadır.
+Tablolar (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`, `env.all_processes` ve `env.v_ebml_inventory_latest` görünümü) `sql/exception_scanner_postgres.sql` ile oluşur. Exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşırlar; ekran, popup, region, rapor ve process sayıları bu tablonun sütunlarındadır.
 
 ```bash
 # Sadece ekran/rapor envanteri
