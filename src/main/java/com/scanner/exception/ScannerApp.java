@@ -1,8 +1,8 @@
 package com.scanner.exception;
 
-import com.scanner.exception.complexity.AnalysisReport;
-import com.scanner.exception.complexity.ComplexityRunner;
-import com.scanner.exception.complexity.RiskLevel;
+import com.scanner.complexity.AnalysisReport;
+import com.scanner.complexity.ComplexityRunner;
+import com.scanner.complexity.RiskLevel;
 import com.scanner.exception.config.Config;
 import com.scanner.exception.db.DbMatcher;
 import com.scanner.exception.db.PostgresExporter;

@@ -370,7 +370,7 @@ Heap konteyner bellek limitinin %75'i olarak ayarlanır. Bitbucket'ın sertifika
 
 ## Kod karmaşıklığı analizi
 
-Exception taramasından sonra klonlanmış her repoda metot karmaşıklığı ve risk analizi yapılabilir: dallanma (CC), kod satırı, iç içe derinlik, okunabilirlik, Halstead, kod kokuları ve kopya kod (PMD CPD). Analizör `com.scanner.exception.complexity` paketindedir; [java-code-analyzer](https://github.com/kaanerdem1/java-code-analyzer) projesinin kodudur (sadece paket adı değişti). Bağlantıyı `ComplexityRunner` sınıfı kurar.
+Exception taramasından sonra klonlanmış her repoda metot karmaşıklığı ve risk analizi yapılabilir: dallanma (CC), kod satırı, iç içe derinlik, okunabilirlik, Halstead, kod kokuları ve kopya kod (PMD CPD). Analizör `com.scanner.complexity` paketindedir; [java-code-analyzer](https://github.com/kaanerdem1/java-code-analyzer) projesinin kodudur (sadece paket adı değişti). Bağlantıyı `ComplexityRunner` sınıfı kurar.
 
 `complexity.enabled=true` ya da `--complexity` ile açılır. Raporlar tarama klasöründe `complexity/` altına yazılır:
 
