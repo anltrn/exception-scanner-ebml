@@ -28,11 +28,28 @@ mvn -q package
 | `git.urls` | `source=git` için virgülle ayrılmış git adresleri |
 | `local.dir` | `source=local` için taranacak klasör |
 | `bitbucket.projects` | Sadece bu projeleri tara (boşsa erişilebilen tüm projeler) |
+| `bitbucket.include.repos` | Sadece bu repoları tara (boşsa hepsi). `PROJE/repo` sadece o projeyi daraltır, aşağıya bakın |
+| `bitbucket.exclude.repos` | Bu repoları atla: repo adı, `PROJE/repo` veya `*` ile kalıp (`z_atil_*`) |
 | `exception.classes` | Aranacak exception'ın tam adı, örn. `com.firma.framework.CustomException` |
 | `exception.ignore.classes` | Eski sınıftan türeyen ama yeni yapıya ait olan sınıflar (örn. yeni `AppException`) |
 | `pattern.N.args` | Aranacak constructor şekli, örn. `0,STRING` (aşağıya bakın) |
 | `scan.throw.only` | `true` ise sadece doğrudan `throw new ...` şeklindekiler |
 | `git.branch` | Boşsa varsayılan dal; `develop` gibi bir dal da verilebilir |
+
+### Repo seçimi
+
+`bitbucket.include.repos` ve `bitbucket.exclude.repos` aynı yazımı kullanır: repo adı (`repo1`), proje ile repo adı (`A/repo1`) veya `*` ile kalıp (`z_atil_*`, `A/test-*`). Büyük/küçük harf duyarsızdır.
+
+- `include` boşsa tüm repolar alınır. `PROJE/kalıp` şeklindeki bir kayıt sadece o projeyi daraltır; listede adı geçmeyen projelerin tüm repoları alınır. Proje adı olmayan kayıt (`core-*`) tüm projeleri daraltır.
+- `exclude` her zaman en son uygulanır; include ile seçilenlerden de çıkarır. Proje adı olmayan kayıt tüm projelerde geçerlidir.
+- `include` içindeki bir kayıt hiçbir repoyla eşleşmezse logda uyarı çıkar (yazım hatası olabilir).
+
+| Ayarlar | Taranan |
+|---|---|
+| `projects=A,B`, `include=A/repo1,A/repo2` | A'dan sadece `repo1` ve `repo2`, B'nin tamamı |
+| `projects=A,B`, `exclude=z_atil_*` | A ve B'de `z_atil_` ile başlayanlar dışındaki tüm repolar |
+| `projects=A,B,C`, `include=A/repo1,A/repo2`, `exclude=z_atil_*` | A'dan `repo1` ve `repo2`; B ve C'den `z_atil_` ile başlayanlar dışındakiler |
+| `include=core-*` | Tüm projelerden sadece adı `core-` ile başlayanlar |
 
 Token'ı dosyaya yazmak yerine ortam değişkeniyle verin:
 
@@ -319,6 +336,7 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 ```json
 {
   "projects": ["PRJ"],
+  "includeRepos": ["PRJ/repo1", "PRJ/repo2"],
   "excludeRepos": ["z_atil_*", "nova-*"],
   "branch": "develop",
   "classes": ["com.firma.framework.CustomException"],

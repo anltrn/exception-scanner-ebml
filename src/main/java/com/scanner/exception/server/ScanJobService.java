@@ -237,7 +237,7 @@ class ScanJobService {
     }
 
     private static ScanRequest emptyRequest() {
-        return new ScanRequest(null, null, null, null, null, null, null, null, null,
+        return new ScanRequest(null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null);
     }
 

@@ -34,6 +34,7 @@ public final class Config {
     public final String token;
     public final String gitUsername;
     public final Set<String> projects;
+    public final Set<String> includeRepos;
     public final Set<String> excludeRepos;
     public final boolean includeArchived;
     public final String cloneProtocol;
@@ -245,6 +246,7 @@ public final class Config {
         token = firstNonEmpty(System.getenv("BITBUCKET_TOKEN"), get(p, "bitbucket.token", ""));
         gitUsername = get(p, "git.username", "");
         projects = new LinkedHashSet<String>(list(get(p, "bitbucket.projects", "")));
+        includeRepos = new LinkedHashSet<String>(list(get(p, "bitbucket.include.repos", "")));
         excludeRepos = new LinkedHashSet<String>(list(get(p, "bitbucket.exclude.repos", "")));
         includeArchived = Boolean.parseBoolean(get(p, "bitbucket.include.archived", "false"));
         cloneProtocol = get(p, "git.protocol", "http").toLowerCase(Locale.ROOT);
@@ -366,6 +368,42 @@ public final class Config {
      * bitbucket.exclude.repos: "repo-slug", "PROJE/repo-slug" veya "*" joker karakterli
      * kalip ("z_atil_*", "nova-*", "PROJE/test-*"). Buyuk-kucuk harf duyarsiz.
      */
+    /**
+     * bitbucket.include.repos: verilirse sadece eşleşen repolar taranır (bitbucket.exclude.repos yine uygulanır).
+     * "PROJE/kalıp" sadece o projeyi daraltır; listede adı geçmeyen projelerin tüm repoları alınır.
+     * Proje adı olmayan kalıp ("core-*") tüm projeleri daraltır. Yazımı exclude ile aynı.
+     */
+    public boolean isIncluded(RepoInfo r) {
+        boolean restricted = false;
+        for (String e : includeRepos) {
+            int slash = e.indexOf('/');
+            if (slash < 0) {
+                restricted = true;
+                if (matchesGlob(e, r.slug)) return true;
+            } else if (matchesGlob(e.substring(0, slash), r.projectKey)) {
+                restricted = true;
+                if (matchesGlob(e, r.id())) return true;
+            }
+        }
+        return !restricted;
+    }
+
+    /** bitbucket.include.repos içinde hiçbir repoyla eşleşmeyen kalıplar (yazım hatası uyarısı için) */
+    public List<String> unmatchedIncludes(List<RepoInfo> repos) {
+        List<String> out = new ArrayList<String>();
+        for (String e : includeRepos) {
+            boolean found = false;
+            for (RepoInfo r : repos) {
+                if (e.indexOf('/') < 0 ? matchesGlob(e, r.slug) : matchesGlob(e, r.id())) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) out.add(e);
+        }
+        return out;
+    }
+
     public boolean isExcluded(RepoInfo r) {
         for (String e : excludeRepos) {
             if (matchesGlob(e, r.slug) || matchesGlob(e, r.id())) return true;
