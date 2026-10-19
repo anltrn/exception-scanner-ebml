@@ -16,9 +16,7 @@ public final class UsageFinding extends Located {
         /** Bir metot veya constructor çağrısına parametre olarak veriliyor */
         ARGUMENT,
         /** Diğer kullanımlar */
-        OTHER,
-        /** call.N desenine uyan metot çağrısı */
-        METHOD_CALL
+        OTHER
     }
 
     public String targetClass = "";

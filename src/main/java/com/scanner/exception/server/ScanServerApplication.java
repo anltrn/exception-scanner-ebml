@@ -24,7 +24,7 @@ import java.util.List;
 @OpenAPIDefinition(
         info = @Info(title = "Exception Kullanım Tarayıcı",
                 version = "1.0.0",
-                description = "Bitbucket, git adresi veya yerel klasördeki Java kodunda exception ve metot çağrısı "
+                description = "Bitbucket, git adresi veya yerel klasördeki Java kodunda exception "
                         + "kullanımlarını tarar; Excel raporu üretir. Taramalar sırayla, arka planda çalışır: "
                         + "POST /api/scans ile başlatın, GET /api/scans/{id} ile durumu izleyin, raporu "
                         + "GET /api/scans/{id}/report ile indirin. Ayrıca haftada bir sunucudaki ayarlarla "

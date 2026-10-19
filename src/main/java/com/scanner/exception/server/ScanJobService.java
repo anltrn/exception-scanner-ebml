@@ -1,5 +1,6 @@
 package com.scanner.exception.server;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scanner.exception.ScannerApp;
 import com.scanner.exception.config.Config;
@@ -72,7 +73,10 @@ class ScanJobService {
         try (Stream<Path> dirs = Files.list(out)) {
             for (Path dir : dirs.filter(d -> Files.isRegularFile(d.resolve(JOB_FILE))).collect(Collectors.toList())) {
                 try {
-                    ScanJob job = json.readValue(dir.resolve(JOB_FILE).toFile(), ScanJob.class);
+                    // Eski sürümlerin yazdığı, artık olmayan alanlar (ör. request.calls) kaydı okunmaz yapmasın
+                    ScanJob job = json.readerFor(ScanJob.class)
+                            .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                            .readValue(dir.resolve(JOB_FILE).toFile());
                     if (job.id == null || !job.id.equals(dir.getFileName().toString())) continue;
                     if (job.status == ScanJob.Status.QUEUED || job.status == ScanJob.Status.RUNNING) {
                         job.status = ScanJob.Status.FAILED;
@@ -98,7 +102,7 @@ class ScanJobService {
     /** İsteği doğrular (hatalıysa IllegalArgumentException) ve sıraya koyar. */
     synchronized ScanJob submit(ScanRequest request, ScanJob.Trigger trigger) throws IOException {
         if (request == null) request = new ScanRequest(null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
         Properties overrides = overrides(request);
         Config cfg = Config.load(baseConfig(), overrides); // ayar hatası varsa hemen 400 dönsün
 

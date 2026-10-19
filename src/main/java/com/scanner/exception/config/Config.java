@@ -1,7 +1,6 @@
 package com.scanner.exception.config;
 
 import com.scanner.exception.model.RepoInfo;
-import com.scanner.exception.scan.CallPattern;
 import com.scanner.exception.scan.UsagePattern;
 
 import java.io.IOException;
@@ -55,7 +54,6 @@ public final class Config {
     public final boolean gitSparse;
     public final boolean perProjectReports;
     public final List<UsagePattern> patterns;
-    public final List<CallPattern> callPatterns;
     public final boolean throwOnly;
     public final boolean reportCatches;
     public final int consoleLimit;
@@ -253,7 +251,6 @@ public final class Config {
         gitSparse = Boolean.parseBoolean(get(p, "git.sparse", "false"));
         perProjectReports = Boolean.parseBoolean(get(p, "report.per.project", "true"));
         patterns = UsagePattern.load(p);
-        callPatterns = CallPattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
         reportCatches = Boolean.parseBoolean(get(p, "report.catch.blocks", "false"));
         consoleLimit = Integer.parseInt(get(p, "console.limit", "200"));
@@ -277,13 +274,12 @@ public final class Config {
                     + (file == null ? "scanner.properties" : file.toAbsolutePath().toString())
                     + ". Parametreler için: java -jar code-scanner-1.0.0.jar --help");
         }
-        // Komut satırında desen verilmişse dosyadaki aynı türden desenler yok sayılır
-        for (String prefix : new String[]{"pattern.", "call."}) {
-            boolean fromCli = false;
-            for (String k : overrides.stringPropertyNames()) if (k.startsWith(prefix)) fromCli = true;
-            if (!fromCli) continue;
+        // Komut satırında desen verilmişse dosyadaki desenler yok sayılır
+        boolean patternsFromCli = false;
+        for (String k : overrides.stringPropertyNames()) if (k.startsWith("pattern.")) patternsFromCli = true;
+        if (patternsFromCli) {
             for (String k : new ArrayList<String>(p.stringPropertyNames())) {
-                if (k.startsWith(prefix)) p.remove(k);
+                if (k.startsWith("pattern.")) p.remove(k);
             }
         }
         p.putAll(overrides);
@@ -320,9 +316,9 @@ public final class Config {
     }
 
     private void validate() {
-        if (exceptionClasses.isEmpty() && callPatterns.isEmpty() && !ebml.enabled) {
+        if (exceptionClasses.isEmpty() && !ebml.enabled) {
             throw new IllegalArgumentException("Aranacak bir şey tanımlanmadı. Ayar dosyasında exception.classes "
-                    + "boş ve komut satırında --class veya --call verilmedi. Ayar dosyasının doğru klasörde olduğunu "
+                    + "boş ve komut satırında --class verilmedi. Ayar dosyasının doğru klasörde olduğunu "
                     + "ve exception.classes satırının dolu olduğunu kontrol edin. "
                     + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml)");
         }

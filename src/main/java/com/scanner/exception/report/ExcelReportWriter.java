@@ -7,7 +7,6 @@ import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
 import com.scanner.exception.model.SubclassFinding;
 import com.scanner.exception.model.UsageFinding;
-import com.scanner.exception.scan.CallPattern;
 import com.scanner.exception.scan.UsagePattern;
 import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ss.usermodel.Cell;
@@ -124,9 +123,6 @@ public final class ExcelReportWriter {
         for (UsagePattern p : cfg.patterns) {
             row = kv(s, st, row, "Desen: " + p.name, "(" + p.argsText + ")");
         }
-        for (CallPattern c : cfg.callPatterns) {
-            row = kv(s, st, row, "Çağrı: " + c.name, c.spec());
-        }
         if (cfg.throwOnly) row = kv(s, st, row, "Kapsam", "Sadece doğrudan throw edilenler");
         row = kv(s, st, row, "Taranan repo sayısı", results.size());
         row = kv(s, st, row, "Taranan Java dosyası", files);
@@ -226,7 +222,6 @@ public final class ExcelReportWriter {
         } else {
             for (UsagePattern p : cfg.patterns) names.add(p.name);
         }
-        for (CallPattern c : cfg.callPatterns) names.add(c.name);
         return names;
     }
 
@@ -248,7 +243,7 @@ public final class ExcelReportWriter {
         Sheet s = wb.createSheet("Kullanımlar");
         boolean db = cfg.db.enabled;
         List<String> headers = new ArrayList<String>(Arrays.asList("Proje", "Repo", "Modül", "Dosya", "Sınıf",
-                "Metot", "Satır", "Exception / Çağrı", "Eşleşen Desen", "Tip Kodu", "Yapılacak", "Id", "Mesaj Tipi",
+                "Metot", "Satır", "Exception", "Eşleşen Desen", "Tip Kodu", "Yapılacak", "Id", "Mesaj Tipi",
                 "Mesaj / Şablon", "Bağlam", "Test Kodu"));
         List<Integer> widths = new ArrayList<Integer>(Arrays.asList(14, 24, 20, 50, 40, 36, 7, 22, 24, 24, 28, 8,
                 24, 60, 16, 10));

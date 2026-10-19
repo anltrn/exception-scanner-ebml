@@ -153,7 +153,6 @@ public final class JavaSourceScanner {
         // Kullanım içerebilecek dosyaları ayrıştırmadan önce metin olarak ayıklamak için anahtar kelimeler
         Set<String> keywords = new LinkedHashSet<String>();
         for (String t : targets) keywords.add(TypeMatcher.simpleName(t));
-        for (CallPattern cp : cfg.callPatterns) keywords.add(cp.method);
         List<String> configuredNames = new ArrayList<String>();
         for (String c : cfg.exceptionClasses) configuredNames.add(TypeMatcher.simpleName(c));
 
@@ -313,7 +312,7 @@ public final class JavaSourceScanner {
         return false;
     }
 
-    /** Tek bir dosyadaki exception oluşturma, metot çağrısı ve catch kullanımlarını bulur. */
+    /** Tek bir dosyadaki exception oluşturma ve catch kullanımlarını bulur. */
     private void scanUnit(CompilationUnit cu, RepoInfo repo, String rel, String module, boolean test,
                           Set<String> targets, RepoResult result) {
         ImportContext ictx = ImportContext.of(cu);
@@ -347,8 +346,6 @@ public final class JavaSourceScanner {
             fillArgs(u, args);
             result.usages.add(u);
         }
-
-        if (!cfg.callPatterns.isEmpty()) scanCalls(cu, repo, rel, module, test, result);
 
         if (!cfg.reportCatches) return;
         for (CatchClause cc : cu.findAll(CatchClause.class)) {
@@ -384,37 +381,6 @@ public final class JavaSourceScanner {
                     break;
                 }
             }
-        }
-    }
-
-    /** call.N desenlerine uyan metot çağrılarını bulur, ör. outBag.put(GENERALERRORCODE.ERROR_CODE, 0) */
-    private void scanCalls(CompilationUnit cu, RepoInfo repo, String rel, String module, boolean test,
-                           RepoResult result) {
-        for (MethodCallExpr mc : cu.findAll(MethodCallExpr.class)) {
-            String methodName = mc.getNameAsString();
-            String scopeText = mc.getScope().map(Node::toString).orElse(null);
-            CallPattern matched = null;
-            List<ArgumentClassifier.Result> args = null;
-            for (CallPattern cp : cfg.callPatterns) {
-                if (!cp.method.equals(methodName) || !cp.scopeMatches(scopeText)) continue;
-                if (args == null) args = ArgumentClassifier.analyzeAll(mc.getArguments());
-                if (cp.args.matches(args)) {
-                    matched = cp;
-                    break;
-                }
-            }
-            if (matched == null) continue;
-
-            UsageFinding u = new UsageFinding();
-            fill(u, repo, rel, module, test, mc, cu);
-            u.targetClass = matched.display();
-            u.pattern = matched.name;
-            u.typeCode = matched.type();
-            u.action = matched.action;
-            u.context = UsageFinding.Context.METHOD_CALL;
-            u.expression = BitbucketClient.abbreviate(mc.toString().replaceAll("\\s+", " "), 500);
-            fillArgs(u, args);
-            result.usages.add(u);
         }
     }
 

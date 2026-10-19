@@ -90,7 +90,6 @@ Parametreler ayar dosyasındaki değerlerin üzerine yazar; ayar dosyası yoksa 
 | `--branch <dal>` | Taranacak dal |
 | `--class <sınıf>` | Aranacak exception'ın tam adı (birden fazla verilebilir) |
 | `--pattern <desen>` | Aranacak argüman şekli, örn. `0,STRING` (birden fazla verilebilir) |
-| `--call <çağrı>` | Aranacak metot çağrısı, `[nesne.]metot:argümanlar` (birden fazla verilebilir) |
 | `--throw-only` | Sadece doğrudan `throw new ...` şeklindekiler |
 | `--lenient` | Import ve paket kontrolü yapmadan sadece sınıf adına göre eşleştir |
 | `--threads <n>` | Aynı anda ayrıştırılacak repo sayısı (varsayılan 4) |
@@ -162,27 +161,6 @@ Argüman olarak belirli bir sabit veya metot çağrısı da aranabilir:
 
 Sabitin değeri adından farklıysa (örneğin `ERROR_CODE = "errorCode"`) string hâlini alternatif olarak ekleyin. Sabit kapalı bir jar içindeyse değerini JDK ile gelen `javap` aracıyla görebilirsiniz: `javap -constants -cp framework.jar com.firma.GENERALERRORCODE`
 
-## Metot çağrısı desenleri
-
-Hata bazen exception fırlatmak yerine başka yollarla bildirilir, örneğin mobile dönen cevaba hata kodu yazılarak. Bunları da aynı raporda görmek için metot çağrısı desenleri tanımlanabilir:
-
-```bash
-java -jar target/code-scanner-1.0.0.jar \
-     --local ~/projeler/servis \
-     --class com.firma.framework.CustomException \
-     --pattern "0,STRING,*" \
-     --call "put:GENERALERRORCODE.ERROR_CODE,ANY"
-```
-
-`--call` değeri `metot:argümanlar` veya `nesne.metot:argümanlar` şeklindedir. Nesne verilmezse metodun hangi nesne üzerinden çağrıldığına bakılmaz; `outBag.put:...` yazılırsa sadece `outBag` (veya `this.outBag`) üzerinden yapılan çağrılar eşleşir. Argüman kısmı exception desenleriyle aynı değerleri kullanır. Parantez ve `*` içerdiği için zsh ve PowerShell'de değeri tırnak içinde verin.
-
-| Kod | Uyan çağrı deseni |
-|---|---|
-| `outBag.put(GENERALERRORCODE.ERROR_CODE, e.getErrorCode());` | `put:GENERALERRORCODE.ERROR_CODE,getErrorCode()` veya `...,ANY` |
-| `outBag.put(GENERALERRORCODE.ERROR_CODE, 0);` | `put:GENERALERRORCODE.ERROR_CODE,0` veya `...,ANY` |
-
-Çağrılar Kullanımlar sayfasında exception kullanımlarıyla birlikte listelenir; "Exception / Çağrı" sütununda `outBag.put(...)` gibi görünür, "Bağlam" sütununda `METHOD_CALL` yazar. Ayar dosyasında `call.N.method`, `call.N.scope`, `call.N.args` ve `call.N.name` ile tanımlanabilir. Sadece çağrı aranacaksa `--class` verilmesi gerekmez.
-
 Bir kullanımın neden rapora girmediğini anlamak için desenleri geçici olarak kaldırıp (tüm kullanımlar raporlanır) Kullanımlar sayfasındaki koda bakabilirsiniz.
 
 ## PostgreSQL envanterine kayıt
@@ -240,7 +218,7 @@ Nedeni `match_note` sütununda açıklanır.
 
 ### Kullanım tipleri
 
-Her desenin `pattern.N.type` (çağrılarda `call.N.type`) değeri `usage_type_code` olarak yazılır. Verilmezse desen adından üretilir. Komut satırında `--pattern "KOD0_SERBEST_METIN=0,STRING,*"` biçimiyle de verilebilir. Doğru kullanımları saymak için bir desen tanımlayıp `pattern.N.legacy=false` yaparsanız, `is_legacy` sütunu sayesinde raporlarda eski kullanımlardan ayrılır.
+Her desenin `pattern.N.type` değeri `usage_type_code` olarak yazılır. Verilmezse desen adından üretilir. Komut satırında `--pattern "KOD0_SERBEST_METIN=0,STRING,*"` biçimiyle de verilebilir. Doğru kullanımları saymak için bir desen tanımlayıp `pattern.N.legacy=false` yaparsanız, `is_legacy` sütunu sayesinde raporlarda eski kullanımlardan ayrılır.
 
 ## Ekran, region, Jasper rapor ve process envanteri
 
@@ -505,7 +483,7 @@ Kaynaklar `src/main/java/com/scanner/exception` altında, sorumluluğa göre pak
 | `config` | `Config`: `scanner.properties` ve komut satırı değerlerinin okunması |
 | `model` | Repo bilgisi, tarama sonucu ve bulgular: `RepoInfo`, `RepoResult`, `UsageFinding`, `CatchFinding`, `SubclassFinding`, `EbmlFile`, `ScanError` ... |
 | `repo` | Repo listesini alma ve klonlama: `BitbucketClient`, `GitUrlRepos`, `LocalRepos`, `GitRunner` |
-| `scan` | Java ve EBML dosyalarının taranması, desen eşleştirme: `JavaSourceScanner`, `EbmlScanner`, `UsagePattern`, `CallPattern`, `ArgumentClassifier`, `TypeMatcher` ... |
+| `scan` | Java ve EBML dosyalarının taranması, desen eşleştirme: `JavaSourceScanner`, `EbmlScanner`, `UsagePattern`, `ArgumentClassifier`, `TypeMatcher` ... |
 | `db` | PostgreSQL envanteriyle eşleştirme ve kayıt: `DbMatcher`, `PostgresExporter` |
 | `report` | Excel raporu: `ExcelReportWriter` |
 | `server` | REST API ve Swagger (Spring Boot): `ScanServerApplication`, `ScanController`, `ScanJobService`, haftalık tarama ... |

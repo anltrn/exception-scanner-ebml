@@ -13,7 +13,6 @@ import com.scanner.exception.repo.GitRunner;
 import com.scanner.exception.repo.GitUrlRepos;
 import com.scanner.exception.repo.LocalRepos;
 import com.scanner.exception.report.ExcelReportWriter;
-import com.scanner.exception.scan.CallPattern;
 import com.scanner.exception.scan.EbmlScanner;
 import com.scanner.exception.scan.JavaSourceScanner;
 import com.scanner.exception.scan.TypeMatcher;
@@ -70,8 +69,6 @@ public final class ScannerApp {
             "  --class <sınıf>      Aranacak exception'ın tam adı (birden fazla verilebilir)",
             "  --pattern <desen>    Aranacak argüman şekli, ör. 0,STRING veya TIP_KODU=0,STRING (birden fazla verilebilir;",
             "                       verilirse dosyadaki desenler yok sayılır)",
-            "  --call <çağrı>       Aranacak metot çağrısı: [nesne.]metot:argümanlar (birden fazla verilebilir)",
-            "                       ör. \"put:GENERALERRORCODE.ERROR_CODE,ANY\" veya \"outBag.put:GENERALERRORCODE.ERROR_CODE,0\"",
             "  --throw-only         Sadece doğrudan throw new ... şeklindekiler",
             "  --lenient            Import/paket kontrolü yapmadan sadece sınıf adına göre eşleştir",
             "  --db                 Kullanımları PostgreSQL envanteriyle eşleştirip tabloya yaz (db.* ayarları)",
@@ -131,7 +128,6 @@ public final class ScannerApp {
         List<String> classes = new ArrayList<String>();
         List<String> gitUrls = new ArrayList<String>();
         int patternNo = 0;
-        int callNo = 0;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             switch (a) {
@@ -163,27 +159,6 @@ public final class ScannerApp {
                     overrides.setProperty("pattern." + patternNo + ".type",
                             patType != null ? patType : UsagePattern.typeCodeOf("ARGS " + pat));
                     break;
-                case "--call": {
-                    callNo++;
-                    String spec = value(args, ++i, a);
-                    String callType = typePrefix(spec);
-                    if (callType != null) spec = spec.substring(spec.indexOf('=') + 1).trim();
-                    String methodPart = spec;
-                    String argPart = "*";
-                    int colon = spec.indexOf(':');
-                    if (colon >= 0) {
-                        methodPart = spec.substring(0, colon).trim();
-                        argPart = spec.substring(colon + 1).trim();
-                    }
-                    int dot = methodPart.lastIndexOf('.');
-                    overrides.setProperty("call." + callNo + ".scope", dot >= 0 ? methodPart.substring(0, dot) : "");
-                    overrides.setProperty("call." + callNo + ".method", dot >= 0 ? methodPart.substring(dot + 1) : methodPart);
-                    overrides.setProperty("call." + callNo + ".args", argPart);
-                    overrides.setProperty("call." + callNo + ".name", "Çağrı " + callNo + " (" + spec + ")");
-                    overrides.setProperty("call." + callNo + ".type",
-                            callType != null ? callType : UsagePattern.typeCodeOf("CALL " + methodPart));
-                    break;
-                }
                 case "--throw-only":
                     overrides.setProperty("scan.throw.only", "true");
                     break;
@@ -243,7 +218,6 @@ public final class ScannerApp {
                 for (UsagePattern p : cfg.patterns) log("Desen: " + p.name + " -> (" + p.argsText + ")");
             }
         }
-        for (CallPattern c : cfg.callPatterns) log("Çağrı: " + c.name + " -> " + c.spec());
 
         List<RepoInfo> all;
         if (cfg.source == Config.Source.LOCAL) all = LocalRepos.list(cfg);
@@ -378,8 +352,7 @@ public final class ScannerApp {
         log(String.format("Bitti. %d Java dosyası tarandı, %d eşleşen kullanım bulundu. Tarama hatası: %d",
                 javaFiles, usages, errors));
         printRepoErrors(results);
-        boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
-        if (javaSearch && usages == 0) diagnose(cfg, results, javaFiles, mentions, parseFailures);
+        if (!cfg.exceptionClasses.isEmpty() && usages == 0) diagnose(cfg, results, javaFiles, mentions, parseFailures);
         if (cfg.ebml.enabled) {
             long sc = 0, pu = 0, rg = 0, rp = 0, pr = 0, un = 0;
             for (RepoResult r : results) {
@@ -527,11 +500,6 @@ public final class ScannerApp {
             log("Repo indirilemediği için taranacak dosya yok. Yukarıdaki HATA satırlarına bakın.");
             return;
         }
-        if (javaFiles > 0 && cfg.exceptionClasses.isEmpty()) {
-            log("Çağrı desenlerine uyan kullanım yok. Metot adını ve argümanları kontrol edin; önce \"put:*\" "
-                    + "gibi geniş bir desenle çalıştırıp Kod sütunundan gerçek kullanım şeklini görebilirsiniz.");
-            return;
-        }
         if (javaFiles == 0) {
             log("Hiç .java dosyası bulunamadı. Klasör yolunu kontrol edin.");
             return;
@@ -587,8 +555,7 @@ public final class ScannerApp {
     private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
         long t0 = System.nanoTime();
         try {
-            boolean javaSearch = !cfg.exceptionClasses.isEmpty() || !cfg.callPatterns.isEmpty();
-            RepoResult result = javaSearch ? scanner.scan(repo) : new RepoResult(repo);
+            RepoResult result = !cfg.exceptionClasses.isEmpty() ? scanner.scan(repo) : new RepoResult(repo);
             if (cfg.ebml.enabled) new EbmlScanner(cfg).scan(repo, result);
             return result;
         } catch (RuntimeException e) {

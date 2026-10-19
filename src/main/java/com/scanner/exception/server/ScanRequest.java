@@ -43,9 +43,6 @@ public record ScanRequest(
                 + "Verilirse ayar dosyasındaki desenler yok sayılır.", example = "[\"0,STRING,*\"]")
         List<String> patterns,
 
-        @Schema(description = "Metot çağrısı desenleri (--call), ör. outBag.put:GENERALERRORCODE.ERROR_CODE,ANY")
-        List<String> calls,
-
         @Schema(description = "Sadece doğrudan throw new ... şeklindekiler (--throw-only)")
         Boolean throwOnly,
 
@@ -82,7 +79,6 @@ public record ScanRequest(
         add(args, "--branch", branch);
         if (classes != null) for (String c : classes) add(args, "--class", c);
         if (patterns != null) for (String p : patterns) add(args, "--pattern", p);
-        if (calls != null) for (String c : calls) add(args, "--call", c);
         if (Boolean.TRUE.equals(throwOnly)) args.add("--throw-only");
         if (Boolean.TRUE.equals(lenient)) args.add("--lenient");
         if (Boolean.TRUE.equals(ebml)) args.add("--ebml");

@@ -37,9 +37,9 @@ COMMENT ON COLUMN env.exception_scan_run.started_at IS 'Taramanın başladığı
 COMMENT ON COLUMN env.exception_scan_run.finished_at IS 'Taramanın sonuçları veritabanına yazılıp bittiği an; görünümler sadece dolu olan (bitmiş) taramaları kullanır';
 COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kaynak: SERVER (Bitbucket Server/Data Center), CLOUD (Bitbucket Cloud), GIT (git adresi) veya LOCAL (yerel klasör)';
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
-COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf veya çağrı aranmadıysa (sadece envanter) 0';
+COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
-COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sınıf aranmadıysa (sadece call.N çağrı desenleri veya sadece envanter) boş metin';
+COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse boş';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';
 COMMENT ON COLUMN env.exception_scan_run.host IS 'Taramanın çalıştığı makinenin adı';

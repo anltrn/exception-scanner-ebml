@@ -14,7 +14,7 @@
 
 -- ---------------------------------------------------------------------
 --  Kullanım tipleri: tarayıcıdaki desenlerin karşılığı
---  (pattern.N.type / call.N.type). Tarayıcı her çalışmada bu tabloyu
+--  (pattern.N.type). Tarayıcı her çalışmada bu tabloyu
 --  ayar dosyasındaki desenlerle günceller; elle de kayıt eklenebilir.
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS env.exception_usage_type (
@@ -22,18 +22,18 @@ CREATE TABLE IF NOT EXISTS env.exception_usage_type (
     type_name     varchar(200) NOT NULL,              -- "Kod 0 + serbest metin"
     action        varchar(200),                       -- "Yeni yapıya çevrilmeli"
     args_spec     varchar(500),                       -- "0,STRING,*" veya "put(GENERALERRORCODE.ERROR_CODE,ANY)"
-    source_kind   varchar(20)  NOT NULL DEFAULT 'EXCEPTION',  -- EXCEPTION | CALL
+    source_kind   varchar(20)  NOT NULL DEFAULT 'EXCEPTION',  -- EXCEPTION (eski kayıtlarda CALL)
     is_legacy     boolean      NOT NULL DEFAULT true,  -- false: doğru kullanım (takip amaçlı sayılır)
     updated_at    timestamptz  NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE  env.exception_usage_type IS 'Kullanım tipleri: ayar dosyasındaki her desenin (pattern.N.* / call.N.*) karşılığı. Tarayıcı her çalıştırmada desenleri bu tabloya ekler veya günceller (silmez); elle de kayıt eklenebilir.';
-COMMENT ON COLUMN env.exception_usage_type.type_code IS 'Kullanım tipi kodu: pattern.N.type / call.N.type, verilmediyse desen adından üretilir (ör. KOD0_SERBEST_METIN); büyük harf, rakam ve _ (en fazla 50). pattern.N tanımlanmadan exception sınıfı arandığında tüm kullanımlar ALL_USAGES koduyla yazılır';
-COMMENT ON COLUMN env.exception_usage_type.type_name IS 'Desenin adı (pattern.N.name / call.N.name), ör. "Kod 0 + serbest metin"; ad verilmediyse "Desen N (...)" / "Çağrı N (...)", ALL_USAGES için "Tüm kullanımlar"';
-COMMENT ON COLUMN env.exception_usage_type.action IS 'Bu tipteki kullanımlar için yapılacak iş (pattern.N.action / call.N.action); verilmediyse desenlerde "Yeni yapıya çevrilmeli", çağrılarda "Merkezi hata yapısına taşınmalı", ALL_USAGES için "İncelenmeli". Sadece elle eklenen kayıtlarda boş olabilir';
-COMMENT ON COLUMN env.exception_usage_type.args_spec IS 'Desenin argüman tanımı: exception desenlerinde pattern.N.args (ör. 0,STRING,*), çağrılarda kapsam.metot(argümanlar) (ör. outBag.put(GENERALERRORCODE.ERROR_CODE,ANY)); ALL_USAGES için *';
-COMMENT ON COLUMN env.exception_usage_type.source_kind IS 'Desenin türü: EXCEPTION (new Sinif(...) ile exception oluşturma, pattern.N) veya CALL (metot çağrısı, call.N)';
-COMMENT ON COLUMN env.exception_usage_type.is_legacy IS 'true (varsayılan): eski, değiştirilmesi gereken kullanım; false: doğru kullanım, sadece takip için sayılır (pattern.N.legacy=false / call.N.legacy=false)';
+COMMENT ON TABLE  env.exception_usage_type IS 'Kullanım tipleri: ayar dosyasındaki her desenin (pattern.N.*) karşılığı. Tarayıcı her çalıştırmada desenleri bu tabloya ekler veya günceller (silmez); elle de kayıt eklenebilir.';
+COMMENT ON COLUMN env.exception_usage_type.type_code IS 'Kullanım tipi kodu: pattern.N.type, verilmediyse desen adından üretilir (ör. KOD0_SERBEST_METIN); büyük harf, rakam ve _ (en fazla 50). pattern.N tanımlanmadan exception sınıfı arandığında tüm kullanımlar ALL_USAGES koduyla yazılır';
+COMMENT ON COLUMN env.exception_usage_type.type_name IS 'Desenin adı (pattern.N.name), ör. "Kod 0 + serbest metin"; ad verilmediyse "Desen N (...)", ALL_USAGES için "Tüm kullanımlar"';
+COMMENT ON COLUMN env.exception_usage_type.action IS 'Bu tipteki kullanımlar için yapılacak iş (pattern.N.action); verilmediyse "Yeni yapıya çevrilmeli", ALL_USAGES için "İncelenmeli". Sadece elle eklenen kayıtlarda boş olabilir';
+COMMENT ON COLUMN env.exception_usage_type.args_spec IS 'Desenin argüman tanımı: pattern.N.args (ör. 0,STRING,*); ALL_USAGES için *';
+COMMENT ON COLUMN env.exception_usage_type.source_kind IS 'Desenin türü: tarayıcı EXCEPTION yazar (new Sinif(...) ile exception oluşturma, pattern.N). CALL sadece metot çağrısı desenleri (call.N) kaldırılmadan önceki sürümlerin yazdığı kayıtlarda bulunur';
+COMMENT ON COLUMN env.exception_usage_type.is_legacy IS 'true (varsayılan): eski, değiştirilmesi gereken kullanım; false: doğru kullanım, sadece takip için sayılır (pattern.N.legacy=false)';
 COMMENT ON COLUMN env.exception_usage_type.updated_at IS 'Kaydın tarayıcı tarafından son eklendiği veya güncellendiği an (desen ayar dosyasında oldukça her çalıştırmada yenilenir)';
 
 -- ---------------------------------------------------------------------
@@ -63,9 +63,9 @@ COMMENT ON COLUMN env.exception_scan_run.started_at IS 'Taramanın başladığı
 COMMENT ON COLUMN env.exception_scan_run.finished_at IS 'Taramanın sonuçları veritabanına yazılıp bittiği an; görünümler sadece dolu olan (bitmiş) taramaları kullanır';
 COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kaynak: SERVER (Bitbucket Server/Data Center), CLOUD (Bitbucket Cloud), GIT (git adresi) veya LOCAL (yerel klasör)';
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
-COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf veya çağrı aranmadıysa (sadece envanter) 0';
+COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
-COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sınıf aranmadıysa (sadece call.N çağrı desenleri veya sadece envanter) boş metin';
+COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse boş';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';
 COMMENT ON COLUMN env.exception_scan_run.host IS 'Taramanın çalıştığı makinenin adı';
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS env.exception_usage (
     exception_class  varchar(300),                     -- CSException, alt sınıfı veya put(...)
     error_code       integer,                          -- new CSException(0, ...) -> 0
     message          text,                             -- koddaki mesaj / şablon
-    usage_context    varchar(50),                      -- THROW | RETURN | ASSIGNMENT | ARGUMENT | OTHER | METHOD_CALL
+    usage_context    varchar(50),                      -- THROW | RETURN | ASSIGNMENT | ARGUMENT | OTHER (eski kayıtlarda METHOD_CALL)
     is_test          boolean      NOT NULL DEFAULT false,
     code_snippet     text,
     link             varchar(2000),
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS env.exception_usage (
     CONSTRAINT ck_exception_usage_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
 );
 
-COMMENT ON TABLE  env.exception_usage IS 'Exception kullanımları: desenlere uyan her exception oluşturma (new ...) veya metot çağrısı (call.N) yeri için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Her kayıt bir taramaya bağlıdır; son tarama için env.v_exception_usage_latest kullanılır.';
+COMMENT ON TABLE  env.exception_usage IS 'Exception kullanımları: desenlere uyan her exception oluşturma (new ...) yeri için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Her kayıt bir taramaya bağlıdır; son tarama için env.v_exception_usage_latest kullanılır.';
 COMMENT ON COLUMN env.exception_usage.id IS 'Kayıt numarası (otomatik artan)';
 COMMENT ON COLUMN env.exception_usage.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
 COMMENT ON COLUMN env.exception_usage.class_id IS 'Tarama anında kullanımın bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
@@ -125,15 +125,15 @@ COMMENT ON COLUMN env.exception_usage.project_key IS 'Reponun projesi: Bitbucket
 COMMENT ON COLUMN env.exception_usage.repo IS 'Repo slug''ı (Bitbucket/git adresindeki repo adı; source=LOCAL için repo klasörünün adı)';
 COMMENT ON COLUMN env.exception_usage.module IS 'Dosyanın modülü: pom.xml, build.gradle, build.xml veya .project bulunan en yakın üst klasörün repo içindeki yolu; repo kökündeyse (kök)';
 COMMENT ON COLUMN env.exception_usage.file_path IS 'Kullanımın bulunduğu .java dosyasının repo içindeki yolu, / ayraçlı (ör. src/main/java/a/b/Dis.java)';
-COMMENT ON COLUMN env.exception_usage.line_no IS 'Kullanımın (new ... ifadesi veya metot çağrısı) başladığı satır; bilinmiyorsa 0';
+COMMENT ON COLUMN env.exception_usage.line_no IS 'Kullanımın (new ... ifadesinin) başladığı satır; bilinmiyorsa 0';
 COMMENT ON COLUMN env.exception_usage.class_fqcn IS 'Kullanımın kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
 COMMENT ON COLUMN env.exception_usage.method_signature IS 'Kullanımın kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
-COMMENT ON COLUMN env.exception_usage.exception_class IS 'Oluşturulan exception sınıfının basit adı (exception.classes''taki sınıf veya repoda ondan türeyen alt sınıf, ör. CSException); çağrı desenlerinde çağrının kısa hali (ör. outBag.put(...))';
+COMMENT ON COLUMN env.exception_usage.exception_class IS 'Oluşturulan exception sınıfının basit adı (exception.classes''taki sınıf veya repoda ondan türeyen alt sınıf, ör. CSException)';
 COMMENT ON COLUMN env.exception_usage.error_code IS 'Argümanlardaki ilk tam sayı sabiti (new CSException(0, ...) -> 0, put(KOD, -1) -> -1); sayı argümanı yoksa veya int sınırını aşıyorsa boş';
 COMMENT ON COLUMN env.exception_usage.message IS 'Koddaki mesaj: ilk string argüman; birleştirmelerde değişkenler {0}, {1} ile gösterilir ("Kayıt bulunamadı: " + id -> Kayıt bulunamadı: {0}), String.format / MessageFormat.format çağrılarında biçim metni. Mesaj argümanı yoksa boş metin';
-COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: exception oluşturmada THROW (throw new ...), RETURN (return new ...), ASSIGNMENT (değişkene atama), ARGUMENT (bir çağrıya parametre olarak) veya OTHER (diğer); call.N desenlerinde METHOD_CALL';
+COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: THROW (throw new ...), RETURN (return new ...), ASSIGNMENT (değişkene atama), ARGUMENT (bir çağrıya parametre olarak) veya OTHER (diğer). METHOD_CALL sadece metot çağrısı desenleri (call.N) kaldırılmadan önceki sürümlerin yazdığı kayıtlarda bulunur';
 COMMENT ON COLUMN env.exception_usage.is_test IS 'Dosya test kodunda mı: yolunda src/test, test veya tests klasörü varsa true';
-COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi veya metot çağrısı), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
+COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
 COMMENT ON COLUMN env.exception_usage.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
 COMMENT ON COLUMN env.exception_usage.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 

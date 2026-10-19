@@ -5,7 +5,6 @@ import com.scanner.exception.model.EbmlFile;
 import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
 import com.scanner.exception.model.UsageFinding;
-import com.scanner.exception.scan.CallPattern;
 import com.scanner.exception.scan.UsagePattern;
 
 import java.net.InetAddress;
@@ -253,9 +252,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         }
         for (UsagePattern p : cfg.patterns) {
             types.put(p.type, new Object[]{p.name, p.action, p.argsText, "EXCEPTION", Boolean.valueOf(p.legacy)});
-        }
-        for (CallPattern c : cfg.callPatterns) {
-            types.put(c.type(), new Object[]{c.name, c.action, c.spec(), "CALL", Boolean.valueOf(c.args.legacy)});
         }
         String sql = "INSERT INTO " + db.typeTable
                 + " (type_code, type_name, action, args_spec, source_kind, is_legacy, updated_at)"

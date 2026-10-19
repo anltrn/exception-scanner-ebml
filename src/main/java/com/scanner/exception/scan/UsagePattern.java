@@ -16,7 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Argüman şekli deseni. Exception constructor'ları (pattern.N) ve metot çağrıları (call.N) için ortaktır.
+ * Exception constructor'larının argüman şekli deseni (pattern.N).
  *   pattern.1.name=Id 0 + mesaj
  *   pattern.1.args=0,STRING
  */
@@ -55,10 +55,6 @@ public final class UsagePattern {
     /** Her argüman pozisyonu için alternatifler: GENERALERRORCODE.ERROR_CODE|'errorCode' */
     private final List<List<Token>> tokens;
     private final boolean openEnded;
-
-    UsagePattern(String name, String action, String argsText) {
-        this(name, action, argsText, null);
-    }
 
     UsagePattern(String name, String action, String argsText, String type) {
         this.name = name;
