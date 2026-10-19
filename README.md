@@ -169,7 +169,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 
 ### Kurulum
 
-`sql/exception_usage_postgres.sql` dosyasını veritabanında bir kez çalıştırın. Dört tablo ve dört görünüm oluşturur:
+`sql/code_scanner_postgres.sql` dosyasını veritabanında bir kez çalıştırın (ilk kurulum). Tüm tabloları ve görünümleri, exception kullanımlarını ve ekran/rapor/process envanterini birlikte oluşturur. Exception tarafı için oluşan nesneler:
 
 | Nesne | İçerik |
 |---|---|
@@ -182,7 +182,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |
 | `env.v_exception_scan_error_latest` | Son taramanın hataları |
 
-Daha önce kurulum yaptıysanız dosyayı tekrar çalıştırmanız yeterli; tabloları silmez, sadece eksik olanları ekler. Önceki sürümlerin yazdığı Türkçe kodları da İngilizce karşılıklarına çevirir: `exception_scan_error.stage` (`KLONLAMA` → `CLONE`, `ATLANDI` → `SKIPPED` ...), `exception_usage.usage_context` (`değişkene atama` → `ASSIGNMENT` ...) ve tip kodu `TUM_KULLANIMLAR` → `ALL_USAGES`. Bu değerlerle filtreleyen kayıtlı sorgularınız varsa yeni kodlara göre güncelleyin. `env.exception_scan_error` tablosu yoksa tarama yine kullanımları yazar, hatalar için logda uyarı verir.
+Dosya boş bir şemaya bir kez çalıştırılmak içindir; nesneler zaten varsa hata verir. `env.exception_scan_error` tablosu yoksa tarama yine kullanımları yazar, hatalar için logda uyarı verir.
 
 Mevcut tablolarınızın sütun adları farklıysa hem SQL dosyasındaki `REFERENCES` satırlarını hem de `db.*` ayarlarını güncelleyin.
 
@@ -238,7 +238,7 @@ Process'lerde `process_id` klasör adının başındaki numaradan (`250001-RISM.
 
 ### Kurulum ve çalıştırma
 
-`sql/ebml_inventory_postgres.sql` dosyasını bir kez çalıştırın. Tek başına da çalışır; exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşır ve ona ekran, popup, region, rapor ve process sayısı sütunlarını ekler. Daha önce çalıştırdıysanız `env.all_processes` tablosu ve `process_count` sütunu için dosyayı yeniden çalıştırın (mevcut tablolara dokunmaz). Eski adlarla oluşturulmuş tablolar (`env.screens`, `env.popups`, `env.regions`, `env.jasper_reports`) varsa bu dosya onları verileriyle birlikte yeni adlarına (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`) taşır.
+Tablolar (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_reports`, `env.all_processes` ve `env.v_ebml_inventory_latest` görünümü) `sql/code_scanner_postgres.sql` ile oluşur. Exception tablolarıyla aynı tarama kaydı tablosunu (`exception_scan_run`) paylaşırlar; ekran, popup, region, rapor ve process sayıları bu tablonun sütunlarındadır.
 
 ```bash
 # Sadece ekran/rapor envanteri

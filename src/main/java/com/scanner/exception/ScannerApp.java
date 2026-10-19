@@ -325,7 +325,7 @@ public final class ScannerApp {
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");
                     log(ir.errors < 0
                             ? "Uyarı: " + cfg.db.errorTable + " tablosu yok, tarama hataları veritabanına yazılmadı "
-                                    + "(sql/exception_usage_postgres.sql dosyasını tekrar çalıştırın)."
+                                    + "(sql/code_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.errors + " tarama hatası " + cfg.db.errorTable + " tablosuna yazıldı.");
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports

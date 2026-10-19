@@ -1,19 +1,49 @@
 -- =====================================================================
---  Ekran, region, Jasper rapor ve process envanteri (PostgreSQL 9.6+)
+--  Code Scanner veritabanı nesneleri (PostgreSQL 9.6+), ilk kurulum
 --
---  Mevcut tablo (değiştirilmez, sadece okunur ve FK ile referans verilir):
---    env.project (id, project_name, ...)
+--  Exception kullanımları, tarama hataları ve ekran / popup / region /
+--  Jasper rapor / process envanteri. Hepsi env.exception_scan_run
+--  tablosundaki tarama kaydına bağlıdır.
 --
---  Sütun adları sizde farklıysa aşağıdaki REFERENCES satırlarını ve
---  scanner.properties içindeki db.project.* ayarlarını birlikte güncelleyin.
---  Bu dosya tek başına da çalıştırılabilir; exception_usage_postgres.sql
---  daha önce çalıştırıldıysa ortak tarama tablosuna sadece sütun ekler.
+--  Mevcut tablolar (değiştirilmez, sadece okunur):
+--    env.java_class  (id, fqcn, ...)              FK ile bağlanmaz
+--    env.java_method (id, class_id, name, ...)    FK ile bağlanmaz
+--    env.project     (id, project_name, ...)      envanter tabloları FK ile bağlanır
+--
+--  Sütun adları sizde farklıysa REFERENCES env.project satırlarını ve
+--  scanner.properties içindeki db.* ayarlarını birlikte güncelleyin.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
---  Tarama çalıştırmaları (exception kullanımlarıyla ortak tablo)
+--  Kullanım tipleri: tarayıcıdaki desenlerin karşılığı
+--  (pattern.N.type). Tarayıcı her çalışmada bu tabloyu
+--  ayar dosyasındaki desenlerle günceller; elle de kayıt eklenebilir.
 -- ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS env.exception_scan_run (
+CREATE TABLE env.exception_usage_type (
+    type_code     varchar(50)  PRIMARY KEY,           -- KOD0_SERBEST_METIN
+    type_name     varchar(200) NOT NULL,              -- "Kod 0 + serbest metin"
+    action        varchar(200),                       -- "Yeni yapıya çevrilmeli"
+    args_spec     varchar(500),                       -- "0,STRING,*"
+    source_kind   varchar(20)  NOT NULL DEFAULT 'EXCEPTION',  -- EXCEPTION
+    is_legacy     boolean      NOT NULL DEFAULT true,  -- false: doğru kullanım (takip amaçlı sayılır)
+    updated_at    timestamptz  NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  env.exception_usage_type IS 'Kullanım tipleri: ayar dosyasındaki her desenin (pattern.N.*) karşılığı. Tarayıcı her çalıştırmada desenleri bu tabloya ekler veya günceller (silmez); elle de kayıt eklenebilir.';
+COMMENT ON COLUMN env.exception_usage_type.type_code IS 'Kullanım tipi kodu: pattern.N.type, verilmediyse desen adından üretilir (ör. KOD0_SERBEST_METIN); büyük harf, rakam ve _ (en fazla 50). pattern.N tanımlanmadan exception sınıfı arandığında tüm kullanımlar ALL_USAGES koduyla yazılır';
+COMMENT ON COLUMN env.exception_usage_type.type_name IS 'Desenin adı (pattern.N.name), ör. "Kod 0 + serbest metin"; ad verilmediyse "Desen N (...)", ALL_USAGES için "Tüm kullanımlar"';
+COMMENT ON COLUMN env.exception_usage_type.action IS 'Bu tipteki kullanımlar için yapılacak iş (pattern.N.action); verilmediyse "Yeni yapıya çevrilmeli", ALL_USAGES için "İncelenmeli". Sadece elle eklenen kayıtlarda boş olabilir';
+COMMENT ON COLUMN env.exception_usage_type.args_spec IS 'Desenin argüman tanımı: pattern.N.args (ör. 0,STRING,*); ALL_USAGES için *';
+COMMENT ON COLUMN env.exception_usage_type.source_kind IS 'Desenin türü: tarayıcı EXCEPTION yazar (new Sinif(...) ile exception oluşturma, pattern.N)';
+COMMENT ON COLUMN env.exception_usage_type.is_legacy IS 'true (varsayılan): eski, değiştirilmesi gereken kullanım; false: doğru kullanım, sadece takip için sayılır (pattern.N.legacy=false)';
+COMMENT ON COLUMN env.exception_usage_type.updated_at IS 'Kaydın tarayıcı tarafından son eklendiği veya güncellendiği an (desen ayar dosyasında oldukça her çalıştırmada yenilenir)';
+
+-- ---------------------------------------------------------------------
+--  Tarama çalıştırmaları: her çalıştırma bir kayıt. Kullanımlar bu
+--  kayda bağlı tutulur; böylece aynı tarama iki kez çalışınca veri
+--  çoğalmaz, haftadan haftaya ilerleme de karşılaştırılabilir.
+-- ---------------------------------------------------------------------
+CREATE TABLE env.exception_scan_run (
     id                 bigserial    PRIMARY KEY,
     started_at         timestamptz  NOT NULL DEFAULT now(),
     finished_at        timestamptz,
@@ -22,15 +52,16 @@ CREATE TABLE IF NOT EXISTS env.exception_scan_run (
     java_file_count    integer,
     usage_count        integer,
     exception_classes  text,
-    note               text,
+    note               text,                           -- --db-note ile verilen açıklama
     run_by             varchar(100),
-    host               varchar(200)
+    host               varchar(200),
+    screen_count       integer,                        -- ebml.enabled=true ile yapılan taramalarda dolu
+    popup_count        integer,
+    region_count       integer,
+    report_count       integer,
+    process_count      integer
 );
-ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS screen_count integer;
-ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS popup_count integer;
-ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS region_count integer;
-ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS report_count integer;
-ALTER TABLE env.exception_scan_run ADD COLUMN IF NOT EXISTS process_count integer;
+
 COMMENT ON TABLE  env.exception_scan_run IS 'Tarayıcının her çalıştırması için bir kayıt. Kullanımlar, tarama hataları ve ekran/popup/region/rapor/process envanteri bu kayda bağlıdır.';
 COMMENT ON COLUMN env.exception_scan_run.id IS 'Tarama numarası; diğer tablolardaki scan_run_id bu değeri gösterir';
 COMMENT ON COLUMN env.exception_scan_run.started_at IS 'Taramanın başladığı an (repoların listelenmeye başlandığı an)';
@@ -49,27 +80,119 @@ COMMENT ON COLUMN env.exception_scan_run.region_count IS 'Bu taramada env.all_re
 COMMENT ON COLUMN env.exception_scan_run.report_count IS 'Bu taramada env.all_reports tablosuna yazılan Jasper rapor sayısı; tarama ebml.enabled=true (--ebml) olmadan çalıştıysa boş';
 COMMENT ON COLUMN env.exception_scan_run.process_count IS 'Bu taramada env.all_processes tablosuna yazılan process sayısı; tarama ebml.enabled=true (--ebml) olmadan çalıştıysa boş';
 
+
 -- ---------------------------------------------------------------------
---  Eski tablo adlarından geçiş (veriler korunur):
---    env.screens -> env.all_screens, env.popups -> env.all_popups,
---    env.regions -> env.all_regions, env.jasper_reports -> env.all_reports
+--  Exception kullanımları
 -- ---------------------------------------------------------------------
-DO $$
-DECLARE
-    r record;
-BEGIN
-    FOR r IN SELECT * FROM (VALUES ('screens', 'all_screens'), ('popups', 'all_popups'),
-                                   ('regions', 'all_regions'), ('jasper_reports', 'all_reports')) AS t (old_name, new_name)
-    LOOP
-        IF to_regclass('env.' || r.old_name) IS NOT NULL AND to_regclass('env.' || r.new_name) IS NULL THEN
-            EXECUTE format('ALTER TABLE env.%I RENAME TO %I', r.old_name, r.new_name);
-            EXECUTE format('ALTER SEQUENCE IF EXISTS env.%I RENAME TO %I', r.old_name || '_id_seq', r.new_name || '_id_seq');
-            EXECUTE format('ALTER INDEX IF EXISTS env.%I RENAME TO %I', 'ix_' || r.old_name || '_run', 'ix_' || r.new_name || '_run');
-            EXECUTE format('ALTER INDEX IF EXISTS env.%I RENAME TO %I', 'ix_' || r.old_name || '_project', 'ix_' || r.new_name || '_project');
-        END IF;
-    END LOOP;
-END
-$$;
+CREATE TABLE env.exception_usage (
+    id               bigserial    PRIMARY KEY,
+    scan_run_id      bigint       NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    -- Tarama anındaki env.java_class / env.java_method id'leri. FK yok: o tablolar her
+    -- yüklemede TRUNCATE + INSERT ile yenilendiği için FK yüklemeyi engeller ve id'ler
+    -- sonraki yüklemede değişebilir. Kalıcı eşleştirme için class_fqcn ve method_signature
+    -- sütunlarındaki metin kullanılmalı (bkz. aşağıdaki örnek sorgu).
+    class_id         bigint,
+    method_id        bigint,
+    usage_type_code  varchar(50)  NOT NULL REFERENCES env.exception_usage_type (type_code),
+
+    -- Eşleştirme sonucu:
+    --   MATCHED           sınıf ve metot bulundu
+    --   METHOD_AMBIGUOUS  aynı adda birden fazla metot, en küçük id seçildi
+    --   METHOD_NOT_FOUND  sınıf bulundu, metot bulunamadı (method_id boş)
+    --   NO_METHOD         kullanım bir alan tanımında, metot yok (method_id boş)
+    --   CLASS_AMBIGUOUS   aynı FQCN birden fazla kayıtta ve metot ayırt edemedi, en küçük id seçildi
+    --   CLASS_NOT_FOUND   sınıf bulunamadı (class_id ve method_id boş)
+    match_status     varchar(30)  NOT NULL,
+    match_note       varchar(1000),
+
+    project_key      varchar(100),
+    repo             varchar(200),
+    module           varchar(300),
+    file_path        varchar(1000) NOT NULL,
+    line_no          integer      NOT NULL,
+    class_fqcn       varchar(1000) NOT NULL,           -- kodda bulunan sınıf (anonim sınıf dahil)
+    method_signature varchar(1000),                    -- kodda bulunan metot: getRate(String, String)
+    exception_class  varchar(300),                     -- CSException veya alt sınıfı
+    error_code       integer,                          -- new CSException(0, ...) -> 0
+    message          text,                             -- koddaki mesaj / şablon
+    usage_context    varchar(50),                      -- THROW | RETURN | ASSIGNMENT | ARGUMENT | OTHER
+    is_test          boolean      NOT NULL DEFAULT false,
+    code_snippet     text,
+    link             varchar(2000),
+    created_at       timestamptz  NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_exception_usage_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
+);
+
+COMMENT ON TABLE  env.exception_usage IS 'Exception kullanımları: desenlere uyan her exception oluşturma (new ...) yeri için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Her kayıt bir taramaya bağlıdır; son tarama için env.v_exception_usage_latest kullanılır.';
+COMMENT ON COLUMN env.exception_usage.id IS 'Kayıt numarası (otomatik artan)';
+COMMENT ON COLUMN env.exception_usage.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
+COMMENT ON COLUMN env.exception_usage.class_id IS 'Tarama anında kullanımın bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
+COMMENT ON COLUMN env.exception_usage.method_id IS 'Tarama anında kullanımın bulunduğu metodun env.java_method id''si (db.method.*); metot bulunamadıysa (METHOD_NOT_FOUND, NO_METHOD, CLASS_NOT_FOUND veya metodu bulunamayan CLASS_AMBIGUOUS) boş. FK yok; class_id boşken dolu olamaz';
+COMMENT ON COLUMN env.exception_usage.usage_type_code IS 'Kullanımın uyduğu desenin tip kodu, env.exception_usage_type.type_code değerine bağlı (FK); ör. KOD0_SERBEST_METIN, pattern.N tanımlanmadıysa ALL_USAGES';
+COMMENT ON COLUMN env.exception_usage.match_status IS 'Envanter eşleştirmesinin sonucu: MATCHED (sınıf ve metot bulundu), METHOD_AMBIGUOUS (aynı adda birden fazla metot, en küçük id seçildi), METHOD_NOT_FOUND (sınıf bulundu, metot bulunamadı), NO_METHOD (kullanım alan tanımında veya metot dışında), CLASS_AMBIGUOUS (aynı FQCN birden fazla kayıtta, en küçük id seçildi), CLASS_NOT_FOUND (sınıf envanterde yok; db.insert.unmatched=false ise bu kullanımlar yazılmaz)';
+COMMENT ON COLUMN env.exception_usage.match_note IS 'Eşleştirme sonucunun açıklaması, ör. CLASS_NOT_FOUND için denenen adlar ("Aranan: a.b.Dis$Ic, a.b.Dis.Ic, a.b.Dis"), overload seçimi, dış sınıfa veya anonim sınıfı içeren sınıfa düşülmesi; açıklama yoksa boş';
+COMMENT ON COLUMN env.exception_usage.project_key IS 'Reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
+COMMENT ON COLUMN env.exception_usage.repo IS 'Repo slug''ı (Bitbucket/git adresindeki repo adı; source=LOCAL için repo klasörünün adı)';
+COMMENT ON COLUMN env.exception_usage.module IS 'Dosyanın modülü: pom.xml, build.gradle, build.xml veya .project bulunan en yakın üst klasörün repo içindeki yolu; repo kökündeyse (kök)';
+COMMENT ON COLUMN env.exception_usage.file_path IS 'Kullanımın bulunduğu .java dosyasının repo içindeki yolu, / ayraçlı (ör. src/main/java/a/b/Dis.java)';
+COMMENT ON COLUMN env.exception_usage.line_no IS 'Kullanımın (new ... ifadesinin) başladığı satır; bilinmiyorsa 0';
+COMMENT ON COLUMN env.exception_usage.class_fqcn IS 'Kullanımın kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
+COMMENT ON COLUMN env.exception_usage.method_signature IS 'Kullanımın kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
+COMMENT ON COLUMN env.exception_usage.exception_class IS 'Oluşturulan exception sınıfının basit adı (exception.classes''taki sınıf veya repoda ondan türeyen alt sınıf, ör. CSException)';
+COMMENT ON COLUMN env.exception_usage.error_code IS 'Argümanlardaki ilk tam sayı sabiti (new CSException(0, ...) -> 0); sayı argümanı yoksa veya int sınırını aşıyorsa boş';
+COMMENT ON COLUMN env.exception_usage.message IS 'Koddaki mesaj: ilk string argüman; birleştirmelerde değişkenler {0}, {1} ile gösterilir ("Kayıt bulunamadı: " + id -> Kayıt bulunamadı: {0}), String.format / MessageFormat.format çağrılarında biçim metni. Mesaj argümanı yoksa boş metin';
+COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: THROW (throw new ...), RETURN (return new ...), ASSIGNMENT (değişkene atama), ARGUMENT (bir çağrıya parametre olarak) veya OTHER (diğer)';
+COMMENT ON COLUMN env.exception_usage.is_test IS 'Dosya test kodunda mı: yolunda src/test, test veya tests klasörü varsa true';
+COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
+COMMENT ON COLUMN env.exception_usage.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
+COMMENT ON COLUMN env.exception_usage.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
+
+CREATE INDEX ix_exception_usage_run    ON env.exception_usage (scan_run_id);
+CREATE INDEX ix_exception_usage_class  ON env.exception_usage (class_id);
+CREATE INDEX ix_exception_usage_method ON env.exception_usage (method_id);
+CREATE INDEX ix_exception_usage_type   ON env.exception_usage (usage_type_code);
+
+-- ---------------------------------------------------------------------
+--  Tarama sırasında karşılaşılan hatalar (Excel'deki "Tarama Hataları"
+--  sayfasının karşılığı). Kullanımlarla aynı transaction'da yazılır.
+--  stage:
+--    CLONE          repo klonlanamadı / güncellenemedi (repo hiç taranmadı)
+--    SCAN           repo taranırken beklenmeyen hata
+--    OUT_OF_MEMORY  repo için bellek yetmedi
+--    FILE_LISTING   repodaki dosyalar listelenemedi
+--    EBML_LISTING   EBML / rapor / process dosyaları listelenemedi
+--    PARSE          Java dosyası ayrıştırılamadı (kısmen taranmış olabilir)
+--    READ           dosya okunamadı
+--    SKIPPED        dosya scan.max.file.kb sınırından büyük, taranmadı
+--    PROCESS_LABEL  processdefinition.xml okunamadı veya label özelliği yok
+-- ---------------------------------------------------------------------
+CREATE TABLE env.exception_scan_error (
+    id           bigserial     PRIMARY KEY,
+    scan_run_id  bigint        NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    project_key  varchar(100),
+    repo         varchar(200),
+    stage        varchar(30)   NOT NULL,
+    file_path    varchar(1000),                        -- dosya bazlı hatalarda repo içindeki yol
+    message      text,
+    created_at   timestamptz   NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  env.exception_scan_error IS 'Tarama sırasında karşılaşılan hatalar (Excel''deki "Tarama Hataları" sayfasının karşılığı): klonlanamayan repo, ayrıştırılamayan dosya vb. Kullanımlarla aynı transaction''da yazılır; son tarama için env.v_exception_scan_error_latest kullanılır.';
+COMMENT ON COLUMN env.exception_scan_error.id IS 'Kayıt numarası (otomatik artan)';
+COMMENT ON COLUMN env.exception_scan_error.scan_run_id IS 'Hatanın oluştuğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
+COMMENT ON COLUMN env.exception_scan_error.project_key IS 'Hatanın oluştuğu reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
+COMMENT ON COLUMN env.exception_scan_error.repo IS 'Hatanın oluştuğu reponun slug''ı (source=LOCAL için repo klasörünün adı)';
+COMMENT ON COLUMN env.exception_scan_error.stage IS 'Hatanın türü: CLONE (repo klonlanamadı / güncellenemedi, repo hiç taranmadı), SCAN (repo taranırken beklenmeyen hata), OUT_OF_MEMORY (repo için bellek yetmedi), FILE_LISTING (repodaki dosyalar listelenemedi), EBML_LISTING (EBML / rapor / process dosyaları listelenemedi), PARSE (Java dosyası ayrıştırılamadı, kısmen taranmış olabilir), READ (dosya okunamadı), SKIPPED (dosya scan.max.file.kb sınırından büyük, taranmadı), PROCESS_LABEL (processdefinition.xml okunamadı veya label özelliği yok)';
+COMMENT ON COLUMN env.exception_scan_error.file_path IS 'Dosya bazlı hatalarda (PARSE, READ, SKIPPED, PROCESS_LABEL) dosyanın repo içindeki yolu; repo bazlı hatalarda (CLONE, SCAN, OUT_OF_MEMORY, FILE_LISTING, EBML_LISTING) boş';
+COMMENT ON COLUMN env.exception_scan_error.message IS 'Hata mesajı: Java hatasının mesajı, ayrıştırma hatasının açıklaması (en fazla 400 karakter) veya tarayıcının açıklaması (ör. "Dosya çok büyük (3000 KB)..."); mesaj yoksa boş metin';
+COMMENT ON COLUMN env.exception_scan_error.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
+
+CREATE INDEX ix_exception_scan_error_run ON env.exception_scan_error (scan_run_id, stage);
+
+-- =====================================================================
+--  Ekran, region, Jasper rapor ve process envanteri (ebml.enabled=true)
+-- =====================================================================
 
 -- ---------------------------------------------------------------------
 --  Ortak sütunlar (tüm envanter tablolarında aynı):
@@ -84,7 +207,7 @@ $$;
 -- ---------------------------------------------------------------------
 
 -- Ekranlar: ebml.page paketi (ve alt paketleri) altındaki .ebml dosyaları
-CREATE TABLE IF NOT EXISTS env.all_screens (
+CREATE TABLE env.all_screens (
     id             bigserial      PRIMARY KEY,
     scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     project_id     bigint         REFERENCES env.project (id),
@@ -113,7 +236,7 @@ COMMENT ON COLUMN env.all_screens.link          IS 'Dosyayı Bitbucket''ta (git 
 COMMENT ON COLUMN env.all_screens.created_at    IS 'Kaydın eklendiği an (DEFAULT now()); kayıtlar tek transaction''da yazıldığı için aynı taramanın tüm kayıtlarında aynıdır';
 
 -- Popup'lar: ebml.popup paketi (ve alt paketleri) altındaki .ebml dosyaları
-CREATE TABLE IF NOT EXISTS env.all_popups (
+CREATE TABLE env.all_popups (
     id             bigserial      PRIMARY KEY,
     scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     project_id     bigint         REFERENCES env.project (id),
@@ -142,7 +265,7 @@ COMMENT ON COLUMN env.all_popups.link          IS 'Dosyayı Bitbucket''ta (git k
 COMMENT ON COLUMN env.all_popups.created_at    IS 'Kaydın eklendiği an (DEFAULT now()); kayıtlar tek transaction''da yazıldığı için aynı taramanın tüm kayıtlarında aynıdır';
 
 -- Region'lar: adı RG_ ile başlayan veya ebml.region paketi altındaki .ebml dosyaları
-CREATE TABLE IF NOT EXISTS env.all_regions (
+CREATE TABLE env.all_regions (
     id             bigserial      PRIMARY KEY,
     scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     project_id     bigint         REFERENCES env.project (id),
@@ -173,7 +296,7 @@ COMMENT ON COLUMN env.all_regions.match_rule    IS 'Dosyanın region sayılma ku
 COMMENT ON COLUMN env.all_regions.created_at    IS 'Kaydın eklendiği an (DEFAULT now()); kayıtlar tek transaction''da yazıldığı için aynı taramanın tüm kayıtlarında aynıdır';
 
 -- Jasper raporları: ebml.report paketi (ve alt paketleri) altındaki .dsxml dosyaları
-CREATE TABLE IF NOT EXISTS env.all_reports (
+CREATE TABLE env.all_reports (
     id             bigserial      PRIMARY KEY,
     scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     project_id     bigint         REFERENCES env.project (id),
@@ -203,7 +326,7 @@ COMMENT ON COLUMN env.all_reports.created_at    IS 'Kaydın eklendiği an (DEFAU
 
 -- Process'ler: process klasörünün (ebml.process.dir) hemen altındaki <numara>[-<ad> veya _<ad>][.par] klasörlerindeki
 -- processdefinition.xml dosyaları: process/250001-RISM.par ve process/250001-RISM ikisi de process (.par zorunlu değil)
-CREATE TABLE IF NOT EXISTS env.all_processes (
+CREATE TABLE env.all_processes (
     id             bigserial      PRIMARY KEY,
     scan_run_id    bigint         NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     project_id     bigint         REFERENCES env.project (id),
@@ -233,23 +356,64 @@ COMMENT ON COLUMN env.all_processes.file_path     IS 'processdefinition.xml dosy
 COMMENT ON COLUMN env.all_processes.link          IS 'Dosyayı Bitbucket''ta (git kaynağında GitHub/GitLab''da) açan bağlantı, taranan commit''e sabitlenmiş; web adresi bilinmeyen kaynaklarda (yerel klasör, diğer git sunucuları) boş';
 COMMENT ON COLUMN env.all_processes.created_at    IS 'Kaydın eklendiği an (DEFAULT now()); kayıtlar tek transaction''da yazıldığı için aynı taramanın tüm kayıtlarında aynıdır';
 
-CREATE INDEX IF NOT EXISTS ix_all_screens_run         ON env.all_screens (scan_run_id);
-CREATE INDEX IF NOT EXISTS ix_all_screens_project     ON env.all_screens (project_id);
-CREATE INDEX IF NOT EXISTS ix_all_popups_run          ON env.all_popups (scan_run_id);
-CREATE INDEX IF NOT EXISTS ix_all_popups_project      ON env.all_popups (project_id);
-CREATE INDEX IF NOT EXISTS ix_all_regions_run         ON env.all_regions (scan_run_id);
-CREATE INDEX IF NOT EXISTS ix_all_regions_project     ON env.all_regions (project_id);
-CREATE INDEX IF NOT EXISTS ix_all_reports_run         ON env.all_reports (scan_run_id);
-CREATE INDEX IF NOT EXISTS ix_all_reports_project     ON env.all_reports (project_id);
-CREATE INDEX IF NOT EXISTS ix_all_processes_run       ON env.all_processes (scan_run_id);
-CREATE INDEX IF NOT EXISTS ix_all_processes_project   ON env.all_processes (project_id);
-CREATE INDEX IF NOT EXISTS ix_all_processes_process   ON env.all_processes (process_id);
+CREATE INDEX ix_all_screens_run         ON env.all_screens (scan_run_id);
+CREATE INDEX ix_all_screens_project     ON env.all_screens (project_id);
+CREATE INDEX ix_all_popups_run          ON env.all_popups (scan_run_id);
+CREATE INDEX ix_all_popups_project      ON env.all_popups (project_id);
+CREATE INDEX ix_all_regions_run         ON env.all_regions (scan_run_id);
+CREATE INDEX ix_all_regions_project     ON env.all_regions (project_id);
+CREATE INDEX ix_all_reports_run         ON env.all_reports (scan_run_id);
+CREATE INDEX ix_all_reports_project     ON env.all_reports (project_id);
+CREATE INDEX ix_all_processes_run       ON env.all_processes (scan_run_id);
+CREATE INDEX ix_all_processes_project   ON env.all_processes (project_id);
+CREATE INDEX ix_all_processes_process   ON env.all_processes (process_id);
 
 -- ---------------------------------------------------------------------
---  Son taramada proje bazında sayılar
+--  Görünümler
 -- ---------------------------------------------------------------------
--- Sütun sırası sürümler arasında değişebildiği için görünüm silinip yeniden oluşturulur
-DROP VIEW IF EXISTS env.v_ebml_inventory_latest;
+
+-- Son taramanın kullanımları, sınıf ve metot bilgileriyle
+CREATE VIEW env.v_exception_usage_latest AS
+SELECT u.*,
+       t.type_name,
+       t.action,
+       t.is_legacy
+  FROM env.exception_usage u
+  JOIN env.exception_usage_type t ON t.type_code = u.usage_type_code
+ WHERE u.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE finished_at IS NOT NULL);
+
+-- Son tarama: proje ve kullanım tipine göre sayılar (ekiplere gönderilecek özet)
+CREATE VIEW env.v_exception_usage_summary AS
+SELECT project_key,
+       repo,
+       usage_type_code,
+       type_name,
+       is_legacy,
+       count(*)                                          AS usage_count,
+       count(*) FILTER (WHERE NOT is_test)               AS non_test_count,
+       count(*) FILTER (WHERE match_status <> 'MATCHED') AS unmatched_count
+  FROM env.v_exception_usage_latest
+ GROUP BY project_key, repo, usage_type_code, type_name, is_legacy;
+
+-- Taramadan taramaya ilerleme: eski kullanım sayısı azalmalı
+CREATE VIEW env.v_exception_usage_trend AS
+SELECT r.id          AS scan_run_id,
+       r.started_at,
+       u.project_key,
+       u.usage_type_code,
+       count(*)      AS usage_count
+  FROM env.exception_scan_run r
+  JOIN env.exception_usage u ON u.scan_run_id = r.id
+ WHERE r.finished_at IS NOT NULL
+ GROUP BY r.id, r.started_at, u.project_key, u.usage_type_code;
+
+-- Son taramanın hataları
+CREATE VIEW env.v_exception_scan_error_latest AS
+SELECT e.*
+  FROM env.exception_scan_error e
+ WHERE e.scan_run_id = (SELECT max(id) FROM env.exception_scan_run WHERE finished_at IS NOT NULL);
+
+-- Son envanter taramasında proje bazında sayılar
 CREATE VIEW env.v_ebml_inventory_latest AS
 WITH last_run AS (
     SELECT max(id) AS id FROM env.exception_scan_run
@@ -276,6 +440,24 @@ SELECT project_id,
   FROM files
  GROUP BY project_id, project_name, project_match;
 
+-- Örnek: son taramada repo ve hata türüne göre hata sayıları
+--   SELECT project_key, repo, stage, count(*) FROM env.v_exception_scan_error_latest
+--    GROUP BY project_key, repo, stage ORDER BY count(*) DESC;
+
+-- Örnek sorgu: son taramadaki eski kullanımlar, sınıf ve metot envanteriyle.
+-- id'ler envanter yeniden yüklenince değişebileceği için sınıf adıyla ve metot adıyla
+-- (imzanın "(" öncesi) eşleştirilir.
+--   SELECT c.fqcn, m.name, u.usage_type_code, u.line_no, u.message
+--     FROM env.v_exception_usage_latest u
+--     JOIN env.java_class  c ON c.fqcn = u.class_fqcn
+--     LEFT JOIN env.java_method m ON m.class_id = c.id
+--                               AND split_part(m.name, '(', 1) = split_part(u.method_signature, '(', 1)
+--    WHERE u.is_legacy
+--    ORDER BY c.fqcn, u.line_no;
+
+-- Eski taramaları temizlemek için (kullanımlar ve hatalar CASCADE ile silinir):
+--   DELETE FROM env.exception_scan_run WHERE started_at < now() - interval '180 days';
+--
 -- Örnek sorgu: bir projenin son taramadaki ekranları
 --   SELECT s.file_name, s.package_name, s.link
 --     FROM env.all_screens s
