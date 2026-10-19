@@ -14,7 +14,7 @@ Tarayıcıyı çalıştıracak makinede JDK 17 veya üstü ve derleme için Mave
 mvn -q package
 ```
 
-Çıktı: `target/code-scanner-1.0.0.jar` (tüm bağımlılıklar içinde). Aynı jar komut satırı aracı olarak veya `--server` ile REST API olarak çalışır (bkz. [REST API ve Swagger](#rest-api-ve-swagger)).
+Çıktı: `target/system-code-analyzer-1.0.0.jar` (tüm bağımlılıklar içinde). Aynı jar komut satırı aracı olarak veya `--server` ile REST API olarak çalışır (bkz. [REST API ve Swagger](#rest-api-ve-swagger)).
 
 ## Ayarlar
 
@@ -52,7 +52,7 @@ Kullanıcı adı boş bırakılırsa `Authorization: Bearer <token>` (Bitbucket 
 Ayar dosyası gerekmez, her şey komut satırından verilebilir:
 
 ```bash
-java -jar target/code-scanner-1.0.0.jar \
+java -jar target/system-code-analyzer-1.0.0.jar \
      --local C:/projeler/musteri-servisi \
      --class com.firma.framework.exception.CustomException \
      --pattern 0,STRING,*
@@ -63,7 +63,7 @@ java -jar target/code-scanner-1.0.0.jar \
 ### GitHub, GitLab veya herhangi bir git adresi
 
 ```bash
-java -jar target/code-scanner-1.0.0.jar \
+java -jar target/system-code-analyzer-1.0.0.jar \
      --git https://github.com/sahip/repo \
      --class com.firma.framework.exception.CustomException \
      --pattern 0,STRING,*
@@ -74,7 +74,7 @@ java -jar target/code-scanner-1.0.0.jar \
 ### Bitbucket
 
 ```bash
-java -jar target/code-scanner-1.0.0.jar scanner.properties
+java -jar target/system-code-analyzer-1.0.0.jar scanner.properties
 ```
 
 Repolar `work.dir` (varsayılan `./scannedRepos`) altına sığ (`--depth 1`) olarak klonlanır; tekrar çalıştırıldığında sadece güncellenir. İlk denemede `bitbucket.projects` ile tek bir projeyle başlamanızı öneririm.
@@ -190,7 +190,7 @@ Mevcut tablolarınızın sütun adları farklıysa hem SQL dosyasındaki `REFERE
 
 ```bash
 export DB_USER=kullanici DB_PASSWORD=sifre
-java -jar target/code-scanner-1.0.0.jar tarama.properties --db --db-note "Ekim takibi"
+java -jar target/system-code-analyzer-1.0.0.jar tarama.properties --db --db-note "Ekim takibi"
 ```
 
 İlk seferde `--db-dry-run` ile deneyin: eşleştirme yapılır ve sonucu Excel'deki "DB Sınıf Id", "DB Metot Id", "Eşleşme" sütunlarında görünür, ama tabloya bir şey yazılmaz.
@@ -242,11 +242,11 @@ Tablolar (`env.all_screens`, `env.all_popups`, `env.all_regions`, `env.all_repor
 
 ```bash
 # Sadece ekran/rapor envanteri
-java -jar target/code-scanner-1.0.0.jar scanner.properties --ebml --db-dry-run
-java -jar target/code-scanner-1.0.0.jar scanner.properties --ebml --db
+java -jar target/system-code-analyzer-1.0.0.jar scanner.properties --ebml --db-dry-run
+java -jar target/system-code-analyzer-1.0.0.jar scanner.properties --ebml --db
 
 # Exception taramasıyla birlikte (tek scan_run_id altında)
-java -jar target/code-scanner-1.0.0.jar scanner.properties --class tr.com.cs.aurora.auroracore.utility.CSException --ebml --db
+java -jar target/system-code-analyzer-1.0.0.jar scanner.properties --class tr.com.cs.aurora.auroracore.utility.CSException --ebml --db
 ```
 
 ### Proje eşleştirmesi
@@ -290,14 +290,14 @@ Her kayıtta dosya adı, paket, repo içindeki yol, Bitbucket'ta dosyayı açan 
 Tarayıcı komut satırı yerine bir web servisi olarak da çalışabilir. Taramalar tarayıcıdan, Swagger arayüzüyle başlatılır ve raporlar oradan indirilir:
 
 ```bash
-java -jar target/code-scanner-1.0.0.jar --server
+java -jar target/system-code-analyzer-1.0.0.jar --server
 ```
 
 Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:8080/swagger-ui.html` adresini açar:
 
 - IDE'de `ScanServerApplication` sınıfını çalıştırın (IntelliJ: sınıfın yanındaki ▶ veya Spring Boot çalıştırma ayarı). `ScannerApp` sınıfını parametresiz çalıştırırsanız sunucu değil komut satırı taraması başlar.
 - `mvn spring-boot:run`
-- `java -jar target/code-scanner-1.0.0.jar --server`
+- `java -jar target/system-code-analyzer-1.0.0.jar --server`
 
 Çalışma klasöründeki `scanner.properties` temel ayar olarak okunur. Bitbucket token'ı için `BITBUCKET_TOKEN` ortam değişkenini verin. Port doluysa `PORT=8081` ile değiştirin.
 
@@ -358,11 +358,11 @@ Sunucu ayarları ortam değişkenleriyle verilir:
 `Dockerfile` jar'ı derleyip sunucu modunda çalıştıran bir imaj üretir; içinde git vardır. Ayar olarak depodaki `scanner.properties` imaja kopyalanır, klonlar `/data/work`, raporlar `/data/reports` altına yazılır.
 
 ```bash
-docker build -t code-scanner .
-docker run -d -p 8080:8080 -v code-scanner-data:/data \
+docker build -t system-code-analyzer .
+docker run -d -p 8080:8080 -v system-code-analyzer-data:/data \
   -e BITBUCKET_TOKEN=<token> -e SCANNER_API_KEY=<rastgele-uzun-değer> \
   -v "$PWD/scanner.properties:/app/scanner.properties" \
-  code-scanner
+  system-code-analyzer
 # Swagger: http://localhost:8080/swagger-ui.html
 ```
 
@@ -401,7 +401,7 @@ Tarayıcı her dosyayı ayrıştırıp işini bitirince bellekten bırakır. Kul
 Yine de `OutOfMemoryError` alırsanız:
 
 ```bash
-java -Xmx4g -jar target/code-scanner-1.0.0.jar scanner.properties --threads 2
+java -Xmx4g -jar target/system-code-analyzer-1.0.0.jar scanner.properties --threads 2
 ```
 
 `-Xmx4g` Java'ya 4 GB bellek kullanma izni verir; `--threads` aynı anda taranan repo sayısını azaltır. Tek bir repo belleği aşarsa tarama durmaz: o repo raporda "OUT_OF_MEMORY" hatasıyla işaretlenir, diğerleri taranmaya devam eder. `scan.max.file.kb` (varsayılan 2048 KB) üzerindeki dosyalar, genelde üretilmiş kod oldukları için atlanır ve Tarama Hataları sayfasında "SKIPPED" olarak listelenir.

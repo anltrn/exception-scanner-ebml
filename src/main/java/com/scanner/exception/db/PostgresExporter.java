@@ -49,7 +49,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         Properties props = new Properties();
         if (!db.user.isEmpty()) props.setProperty("user", db.user);
         if (!db.password.isEmpty()) props.setProperty("password", db.password);
-        props.setProperty("ApplicationName", "code-scanner");
+        props.setProperty("ApplicationName", "system-code-analyzer");
         props.setProperty("connectTimeout", "20");
         return DriverManager.getConnection(db.url, props);
     }

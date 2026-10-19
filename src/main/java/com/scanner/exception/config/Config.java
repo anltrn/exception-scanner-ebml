@@ -288,7 +288,7 @@ public final class Config {
         } else if (overrides.isEmpty()) {
             throw new IOException("Ayar dosyası bulunamadı: "
                     + (file == null ? "scanner.properties" : file.toAbsolutePath().toString())
-                    + ". Parametreler için: java -jar code-scanner-1.0.0.jar --help");
+                    + ". Parametreler için: java -jar system-code-analyzer-1.0.0.jar --help");
         }
         // Komut satırında desen verilmişse dosyadaki desenler yok sayılır
         boolean patternsFromCli = false;

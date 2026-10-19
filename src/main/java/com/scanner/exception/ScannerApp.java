@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Bitbucket'taki (veya yerel klasördeki) tüm Java kodunu tarayıp verilen exception sınıfının
  * kullanımlarını Excel raporu olarak çıkarır.
  *
- * Kullanım: java -jar code-scanner-1.0.0.jar [scanner.properties] [parametreler]
+ * Kullanım: java -jar system-code-analyzer-1.0.0.jar [scanner.properties] [parametreler]
  * Parametre listesi için: --help. REST API + Swagger arayüzüyle çalıştırmak için: --server
  */
 public final class ScannerApp {
@@ -58,7 +58,7 @@ public final class ScannerApp {
     }
 
     private static final String USAGE = String.join(System.lineSeparator(),
-            "Kullanım: java -jar code-scanner-1.0.0.jar [ayar-dosyası] [parametreler]",
+            "Kullanım: java -jar system-code-analyzer-1.0.0.jar [ayar-dosyası] [parametreler]",
             "",
             "Ayar dosyası verilmezse çalışılan klasördeki scanner.properties okunur (varsa).",
             "Komut satırı parametreleri ayar dosyasındaki değerlerin üzerine yazar.",
@@ -84,9 +84,9 @@ public final class ScannerApp {
             "  --help               Bu yardımı göster",
             "",
             "Örnekler:",
-            "  java -jar code-scanner-1.0.0.jar --local C:/projeler/musteri-servisi \\",
+            "  java -jar system-code-analyzer-1.0.0.jar --local C:/projeler/musteri-servisi \\",
             "       --class com.firma.framework.CustomException --pattern 0,STRING,*",
-            "  java -jar code-scanner-1.0.0.jar --git https://github.com/sahip/repo \\",
+            "  java -jar system-code-analyzer-1.0.0.jar --git https://github.com/sahip/repo \\",
             "       --class com.firma.framework.CustomException --pattern 0,STRING,*");
 
     /** Komut satırı parametrelerinin ayrıştırılmış hali */

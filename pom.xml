@@ -13,7 +13,7 @@
     </parent>
 
     <groupId>com.example.tools</groupId>
-    <artifactId>code-scanner</artifactId>
+    <artifactId>system-code-analyzer</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>Code Scanner</name>
@@ -68,7 +68,7 @@
 
     <build>
         <plugins>
-            <!-- Tüm bağımlılıklarla tek bir çalıştırılabilir jar üretir (target/code-scanner-1.0.0.jar).
+            <!-- Tüm bağımlılıklarla tek bir çalıştırılabilir jar üretir (target/system-code-analyzer-1.0.0.jar).
                  Normalde komut satırı aracı olarak, server parametresiyle REST API olarak çalışır. -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>

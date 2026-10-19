@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Tarayıcıyı REST API olarak çalıştırır (java -jar code-scanner-1.0.0.jar --server).
+ * Tarayıcıyı REST API olarak çalıştırır (java -jar system-code-analyzer-1.0.0.jar --server).
  * Swagger arayüzü: /swagger-ui.html, sağlık kontrolleri: /actuator/health/liveness ve /readiness.
  */
 @SpringBootApplication
