@@ -1,18 +1,21 @@
 package com.scanner.exception.scan;
 
-import com.github.javaparser.ast.expr.EnclosedExpr;
+import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
-import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.NameExpr;
-import com.github.javaparser.ast.expr.UnaryExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
+import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.EmptyStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
 import com.github.javaparser.ast.stmt.IfStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.Statement;
+import com.github.javaparser.ast.type.Type;
 import com.scanner.exception.model.CatchFinding.SwallowKind;
 
 import java.util.ArrayList;
@@ -25,7 +28,8 @@ import java.util.regex.Pattern;
 /**
  * Bir catch bloğunun hatayı yutup yutmadığını gövdesine bakarak sınıflandırır:
  * EMPTY (boş veya sadece yorum), LOG_ONLY (sadece log), LOG_AND_RETURN (log ve ardından return),
- * RETURN_ONLY (log olmadan sadece sabit değerle return: null, false, "", 0, -1 veya değersiz return).
+ * RETURN_ONLY (log olmadan sadece return). İki return türünde de dönen değer hatayı taşıyorsa
+ * (bkz. {@link #passesError}) yutma sayılmaz.
  *
  * Log çağrısı: e.printStackTrace(), System.out/err.print*, adı scan.swallowed.log.names'te olan
  * (ör. log, logger) veya "logger" ile biten nesnelerin metotları, getLogger()/getLog() sonucunun
@@ -44,28 +48,48 @@ public final class CatchClassifier {
     }
 
     /** Hatayı yutmuyorsa null */
-    public SwallowKind classify(BlockStmt body) {
+    public SwallowKind classify(CatchClause cc) {
         List<Statement> stmts = new ArrayList<Statement>();
-        for (Statement s : body.getStatements()) if (!(s instanceof EmptyStmt)) stmts.add(s);
+        for (Statement s : cc.getBody().getStatements()) if (!(s instanceof EmptyStmt)) stmts.add(s);
         if (stmts.isEmpty()) return SwallowKind.EMPTY;
         Statement last = stmts.get(stmts.size() - 1);
         if (last instanceof ReturnStmt) {
+            if (passesError((ReturnStmt) last, cc)) return null;
             List<Statement> before = stmts.subList(0, stmts.size() - 1);
-            if (before.isEmpty()) return isConstantReturn((ReturnStmt) last) ? SwallowKind.RETURN_ONLY : null;
+            if (before.isEmpty()) return SwallowKind.RETURN_ONLY;
             return allLog(before) ? SwallowKind.LOG_AND_RETURN : null;
         }
         return allLog(stmts) ? SwallowKind.LOG_ONLY : null;
     }
 
-    /** return; return null; return false; return ""; return 0; return -1; */
-    private static boolean isConstantReturn(ReturnStmt r) {
-        if (!r.getExpression().isPresent()) return true;
+    /**
+     * return ifadesi hatayı çağırana taşıyorsa true (yutma sayılmaz):
+     * yakalanan değişken (adı ne olursa olsun: e, ex, t) ifadede geçiyor, ör. return handle(ex),
+     * return new HataCevabi(ex.getMessage()); ifadede adı Exception / Error / Throwable ile biten bir
+     * tip oluşturuluyor, ör. return new BusinessException("x"); veya catch'in bulunduğu metodun dönüş
+     * tipi böyle bir tip. Değersiz return ve null, false, "", EMPTY, new ArrayList() gibi değerler hatayı taşımaz.
+     */
+    static boolean passesError(ReturnStmt r, CatchClause cc) {
+        if (!r.getExpression().isPresent()) return false;
         Expression e = r.getExpression().get();
-        while (e instanceof EnclosedExpr) e = ((EnclosedExpr) e).getInner();
-        if (e instanceof UnaryExpr && ((UnaryExpr) e).getOperator() == UnaryExpr.Operator.MINUS) {
-            e = ((UnaryExpr) e).getExpression();
+        String var = cc.getParameter().getNameAsString();
+        for (NameExpr n : e.findAll(NameExpr.class)) if (n.getNameAsString().equals(var)) return true;
+        for (ObjectCreationExpr o : e.findAll(ObjectCreationExpr.class)) {
+            if (isErrorType(o.getType().getNameAsString())) return true;
         }
-        return e instanceof LiteralExpr;
+        // En yakın metot (lambda içindeki return lambda'nın sonucudur, metodun değil)
+        for (Node n = cc.getParentNode().orElse(null); n != null; n = n.getParentNode().orElse(null)) {
+            if (n instanceof LambdaExpr) return false;
+            if (n instanceof MethodDeclaration) {
+                Type t = ((MethodDeclaration) n).getType();
+                return t.isClassOrInterfaceType() && isErrorType(t.asClassOrInterfaceType().getNameAsString());
+            }
+        }
+        return false;
+    }
+
+    private static boolean isErrorType(String simpleName) {
+        return simpleName.endsWith("Exception") || simpleName.endsWith("Error") || simpleName.endsWith("Throwable");
     }
 
     private boolean allLog(List<Statement> stmts) {

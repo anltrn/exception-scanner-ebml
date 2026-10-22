@@ -365,7 +365,7 @@ public final class JavaSourceScanner {
                 String m = TypeMatcher.match(t.getNameWithScope(), ictx, targets, cfg.lenientMatch);
                 if (m != null) matched.add(TypeMatcher.simpleName(m));
             }
-            CatchFinding.SwallowKind kind = catchClassifier.classify(cc.getBody());
+            CatchFinding.SwallowKind kind = catchClassifier.classify(cc);
             boolean swallows = kind != null;
             if (matched.isEmpty() && !(allSwallowed && swallows)) continue;
             CatchFinding c = new CatchFinding();
