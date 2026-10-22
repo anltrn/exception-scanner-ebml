@@ -288,33 +288,9 @@ public final class ScannerApp {
         // Veritabanı eşleştirmesi raporlardan önce yapılır ki Excel'de de class_id / method_id görünsün
         boolean resolved = cfg.db.enabled && resolveInDatabase(cfg, results);
 
-        Date now = new Date();
-        ExcelReportWriter writer = new ExcelReportWriter(cfg, now);
-
-        Path master = outDir.resolve("exception_scan_report.xlsx");
-        writer.write(master, "Exception Kullanım Taraması - Tüm Projeler", results);
-        log("Ana rapor: " + master.toAbsolutePath());
-
-        if (cfg.perProjectReports) {
-            Map<String, List<RepoResult>> byProject = new TreeMap<String, List<RepoResult>>();
-            for (RepoResult r : results) {
-                List<RepoResult> list = byProject.get(r.repo.projectKey);
-                if (list == null) {
-                    list = new ArrayList<RepoResult>();
-                    byProject.put(r.repo.projectKey, list);
-                }
-                list.add(r);
-            }
-            for (Map.Entry<String, List<RepoResult>> en : byProject.entrySet()) {
-                String name = en.getValue().get(0).repo.projectName;
-                Path file = outDir.resolve("projects").resolve("report_" + GitRunner.safe(en.getKey()) + ".xlsx");
-                writer.write(file, "Exception Kullanım Taraması - " + name + " (" + en.getKey() + ")", en.getValue());
-            }
-            log(byProject.size() + " proje raporu: " + outDir.resolve("projects").toAbsolutePath());
-        }
-
+        if (cfg.reportExcel) writeExcel(cfg, results, outDir);
+        else log("Excel raporu yazılmadı (report.excel=false).");
         printFindings(results, cfg.consoleLimit);
-        log("Detaylı Excel raporu: " + master.toAbsolutePath() + "  (detaylar 'Kullanımlar' sayfasında)");
 
         // Raporlar yazılırken bağlantı açık tutulmaz (eşleştirme ve kayıt ayrı bağlantılarla yapılır):
         // açık kalan okuma transaction'ı env.java_class gibi tablolardaki TRUNCATE'leri bekletirdi.
@@ -384,6 +360,33 @@ public final class ScannerApp {
         summary.put("errors", errors);
         summary.put("reportDir", outDir.toAbsolutePath().toString());
         return summary;
+    }
+
+    /** Ana Excel raporu ve report.per.project=true ise proje başına raporlar */
+    private static void writeExcel(Config cfg, List<RepoResult> results, Path outDir) throws java.io.IOException {
+        ExcelReportWriter writer = new ExcelReportWriter(cfg, new Date());
+        Path master = outDir.resolve("exception_scan_report.xlsx");
+        writer.write(master, "Exception Kullanım Taraması - Tüm Projeler", results);
+        log("Ana rapor: " + master.toAbsolutePath());
+
+        if (cfg.perProjectReports) {
+            Map<String, List<RepoResult>> byProject = new TreeMap<String, List<RepoResult>>();
+            for (RepoResult r : results) {
+                List<RepoResult> list = byProject.get(r.repo.projectKey);
+                if (list == null) {
+                    list = new ArrayList<RepoResult>();
+                    byProject.put(r.repo.projectKey, list);
+                }
+                list.add(r);
+            }
+            for (Map.Entry<String, List<RepoResult>> en : byProject.entrySet()) {
+                String name = en.getValue().get(0).repo.projectName;
+                Path file = outDir.resolve("projects").resolve("report_" + GitRunner.safe(en.getKey()) + ".xlsx");
+                writer.write(file, "Exception Kullanım Taraması - " + name + " (" + en.getKey() + ")", en.getValue());
+            }
+            log(byProject.size() + " proje raporu: " + outDir.resolve("projects").toAbsolutePath());
+        }
+        log("Detaylı Excel raporu: " + master.toAbsolutePath() + "  (detaylar 'Kullanımlar' sayfasında)");
     }
 
     /**

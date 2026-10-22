@@ -65,7 +65,6 @@ public final class ExcelReportWriter {
             summary(wb, st, title, results);
             usages(wb, st, results);
             messages(wb, st, results);
-            if (cfg.reportCatches) catches(wb, st, results);
             if (swallowedSheet()) swallowed(wb, st, results);
             subclasses(wb, st, results);
             if (cfg.ebml.enabled) ebmlFiles(wb, st, results);
@@ -98,13 +97,11 @@ public final class ExcelReportWriter {
         tc.setCellStyle(st.title);
 
         List<String> names = patternNames();
-        long files = 0, total = 0, catchCount = 0, empty = 0, subs = 0, errs = 0;
+        long files = 0, total = 0, subs = 0, errs = 0;
         long[] perPattern = new long[names.size()];
         for (RepoResult r : results) {
             files += r.javaFiles;
             total += r.usages.size();
-            catchCount += r.catches.size();
-            empty += r.emptyCatches();
             subs += r.subclasses.size();
             errs += r.errors.size();
             for (int i = 0; i < names.size(); i++) perPattern[i] += r.count(names.get(i));
@@ -129,10 +126,6 @@ public final class ExcelReportWriter {
         row = kv(s, st, row, "Taranan Java dosyası", files);
         row = kv(s, st, row, "Toplam eşleşen kullanım", total);
         for (int i = 0; i < names.size(); i++) row = kv(s, st, row, "   " + names.get(i), perPattern[i]);
-        if (cfg.reportCatches) {
-            row = kv(s, st, row, "Catch blokları", catchCount);
-            row = kv(s, st, row, "   Boş catch (exception yutuluyor)", empty);
-        }
         if (swallowedSheet()) {
             Map<String, Long> kinds = new java.util.LinkedHashMap<String, Long>();
             for (CatchFinding.SwallowKind k : CatchFinding.SwallowKind.values()) kinds.put(k.name(), 0L);
@@ -182,12 +175,6 @@ public final class ExcelReportWriter {
             headers.add(n);
             widths.add(18);
         }
-        if (cfg.reportCatches) {
-            headers.add("Catch");
-            headers.add("Boş Catch");
-            widths.add(10);
-            widths.add(11);
-        }
         if (swallowedSheet()) {
             headers.add("Yutulan Exception");
             widths.add(12);
@@ -219,10 +206,6 @@ public final class ExcelReportWriter {
             num(x, c++, r.javaFiles);
             num(x, c++, r.usages.size());
             for (String n : names) num(x, c++, r.count(n));
-            if (cfg.reportCatches) {
-                num(x, c++, r.catches.size());
-                num(x, c++, r.emptyCatches());
-            }
             if (swallowedSheet()) num(x, c++, r.swallowed.size());
             if (cfg.ebml.enabled) {
                 for (EbmlFile.Kind k : EBML_KINDS) num(x, c++, r.count(k));
@@ -383,35 +366,6 @@ public final class ExcelReportWriter {
     }
 
     // ------------------------------------------------------------------ Catch blokları
-
-    private void catches(Workbook wb, Styles st, List<RepoResult> results) {
-        Sheet s = wb.createSheet("Catch Blokları");
-        Table t = new Table(s, st, 0, true,
-                new String[]{"Proje", "Repo", "Modül", "Dosya", "Sınıf", "Metot", "Satır", "Yakalanan Tip",
-                        "Değişken", "Boş Blok", "Yeniden Fırlatıyor", "Yutma Türü", "Not", "Test Kodu", "Bağlantı"},
-                new int[]{14, 24, 20, 50, 40, 36, 7, 24, 12, 10, 18, 16, 60, 10, 18});
-        for (RepoResult r : results) {
-            for (CatchFinding c : r.catches) {
-                Row x = t.row();
-                text(x, 0, c.projectKey);
-                text(x, 1, c.repo);
-                text(x, 2, c.module);
-                text(x, 3, c.file);
-                text(x, 4, c.className);
-                text(x, 5, c.member);
-                num(x, 6, c.line);
-                text(x, 7, c.caughtTypes);
-                text(x, 8, c.variable);
-                text(x, 9, c.emptyBody ? "Evet" : "Hayır");
-                text(x, 10, c.rethrows ? "Evet" : "Hayır");
-                text(x, 11, c.swallowKind == null ? "" : c.swallowKind.name());
-                text(x, 12, c.note());
-                text(x, 13, c.testCode ? "Evet" : "Hayır");
-                t.link(x, 14, c.link);
-            }
-        }
-        t.finish();
-    }
 
     // ------------------------------------------------------------------ Yutulan exception'lar
 

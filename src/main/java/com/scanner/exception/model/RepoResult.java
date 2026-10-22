@@ -12,7 +12,6 @@ public final class RepoResult {
     /** Ayrıştırılamayan dosya sayısı */
     public int parseFailures;
     public final List<UsageFinding> usages = new ArrayList<UsageFinding>();
-    public final List<CatchFinding> catches = new ArrayList<CatchFinding>();
     /** Hata yutan catch blokları (boş, sadece log, log + return); kapsamı scan.swallowed.scope belirler */
     public final List<CatchFinding> swallowed = new ArrayList<CatchFinding>();
     public final List<SubclassFinding> subclasses = new ArrayList<SubclassFinding>();
@@ -30,11 +29,6 @@ public final class RepoResult {
         return n;
     }
 
-    public long emptyCatches() {
-        long n = 0;
-        for (CatchFinding c : catches) if (c.emptyBody) n++;
-        return n;
-    }
 
     public long count(EbmlFile.Kind kind) {
         long n = 0;

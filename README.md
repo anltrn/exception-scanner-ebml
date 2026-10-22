@@ -121,6 +121,8 @@ Windows komut satırında satır devamı için `\` yerine `^` kullanın ya da ko
 
 Bulunan kullanımlar (varsayılan olarak ilk 200 tanesi) dosya, satır, sınıf, metot ve kodla birlikte konsola da yazılır; tam liste Excel raporundadır.
 
+`report.excel=false` ile hiç Excel raporu yazılmaz; sonuçlar sadece veritabanına (`db.enabled=true`) ve konsola gider. Swagger'dan bir defalığına `"properties": {"report.excel": "false"}` ile de kapatılabilir; bu durumda `GET /api/scans/{id}/report` 404 döner.
+
 `output.dir/yyyyMMdd_HHmm/` altında:
 
 - `exception_scan_report.xlsx`: tüm projeleri içeren ana rapor (açılışta Kullanımlar sayfası görünür)
@@ -133,8 +135,6 @@ Her raporda şu sayfalar bulunur (Excel'de sekmeler pencerenin altında, Numbers
 **Kullanımlar:** desene uyan her kullanım. Proje, repo, modül, dosya, sınıf, metot, satır, eşleşen desen, yapılacak iş, id değeri, mesaj tipi ve metni, kodun kendisi ve Bitbucket'ta ilgili satırı açan bağlantı. Bağlantılar taranan commit'e sabitlendiği için kod değişse de doğru satırı gösterir.
 
 **Mesajlar:** koddaki string mesajların tekilleştirilmiş listesi, kaç yerde kullanıldığıyla birlikte. Sarı sütunlar (önerilen hata kodu, TR ve EN kullanıcı mesajı) doldurulduğunda hata kataloğunun ilk taslağı çıkmış olur. Birleştirilen değişkenler `{0}`, `{1}` şeklinde gösterilir: `"Kayıt bulunamadı: " + id` → `Kayıt bulunamadı: {0}`.
-
-**Catch Blokları** (`report.catch.blocks=true` ise): exception'ı yakalayan tüm bloklar (yutanlar, tekrar fırlatanlar, hatayı işleyenler). Boş olanlar ve yakalayıp akışa devam edenler ayrıca işaretlenir; "Yutma Türü" sütunu hatayı yutanların türünü gösterir (`EMPTY`, `LOG_ONLY`, `LOG_AND_RETURN`, `RETURN_ONLY`).
 
 **Yutulan Exception'lar** (`report.swallowed=true`, varsayılan): hatayı yutan catch blokları; `env.swallowed_exceptions` tablosuna yazılan kayıtların aynısıdır (kapsamı `scan.swallowed.scope`). Özet sayfasında türe göre sayıları da görünür. `report.swallowed=false` ile sayfa oluşmaz; veritabanına yazma bundan etkilenmez.
 
@@ -196,7 +196,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.exception_scan_run` | Her tarama çalıştırması bir kayıt |
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
 | `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
-| `env.swallowed_exceptions` | Hata yutan catch blokları; `catch_kind` nasıl yuttuğunu gösterir: `EMPTY` (gövde boş veya sadece yorum), `LOG_ONLY` (sadece log, ör. `log.error("x", e)`, `e.printStackTrace()`), `LOG_AND_RETURN` (log ve ardından `return`), `RETURN_ONLY` (log olmadan sadece `return`: `null`, `false`, `""`, `EMPTY`, `return;` ...). Dönen değer hatayı çağırana taşıyorsa (yakalanan değişken ifadede geçiyor, ör. `return handle(ex)`; `...Exception` tipi oluşturuluyor; ya da metodun dönüş tipi exception) yutma sayılmaz). Log sayılan nesne adları `scan.swallowed.log.names` ile verilir. `class_id` / `method_id` kullanımlardaki gibi eşleştirilir. `report.catch.blocks` ve `report.swallowed` ayarlarından bağımsız olarak `db.enabled=true` ile yazılır. Kapsamı `scan.swallowed.scope` belirler: `TARGET` (varsayılan) aranan exception'ı yakalayanlar, `ALL` tipine bakmadan hepsi (`catch (Exception e) { }` dahil; aranan sınıf geçmeyen dosyalar da ayrıştırıldığı için tarama uzar), `OFF` hiçbiri |
+| `env.swallowed_exceptions` | Hata yutan catch blokları; `catch_kind` nasıl yuttuğunu gösterir: `EMPTY` (gövde boş veya sadece yorum), `LOG_ONLY` (sadece log, ör. `log.error("x", e)`, `e.printStackTrace()`), `LOG_AND_RETURN` (log ve ardından `return`), `RETURN_ONLY` (log olmadan sadece `return`: `null`, `false`, `""`, `EMPTY`, `return;` ...). Dönen değer hatayı çağırana taşıyorsa (yakalanan değişken ifadede geçiyor, ör. `return handle(ex)`; `...Exception` tipi oluşturuluyor; ya da metodun dönüş tipi exception) yutma sayılmaz). Log sayılan nesne adları `scan.swallowed.log.names` ile verilir. `class_id` / `method_id` kullanımlardaki gibi eşleştirilir. `report.excel` ve `report.swallowed` ayarlarından bağımsız olarak `db.enabled=true` ile yazılır. Kapsamı `scan.swallowed.scope` belirler: `TARGET` (varsayılan) aranan exception'ı yakalayanlar, `ALL` tipine bakmadan hepsi (`catch (Exception e) { }` dahil; aranan sınıf geçmeyen dosyalar da ayrıştırıldığı için tarama uzar), `OFF` hiçbiri |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |
 | `env.v_exception_usage_summary` | Son tarama, proje ve tipe göre sayılar |
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |

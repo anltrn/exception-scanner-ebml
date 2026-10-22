@@ -56,7 +56,8 @@ public final class Config {
     public final boolean perProjectReports;
     public final List<UsagePattern> patterns;
     public final boolean throwOnly;
-    public final boolean reportCatches;
+    /** false: hiç Excel raporu yazılmaz (report.excel) */
+    public final boolean reportExcel;
     /** Excel'de "Yutulan Exception'lar" sayfası (report.swallowed) */
     public final boolean reportSwallowed;
     /** Veritabanına (db.swallowed.table) yazılacak hata yutan catch blokları: scan.swallowed.scope */
@@ -291,7 +292,7 @@ public final class Config {
         perProjectReports = Boolean.parseBoolean(get(p, "report.per.project", "true"));
         patterns = UsagePattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
-        reportCatches = Boolean.parseBoolean(get(p, "report.catch.blocks", "false"));
+        reportExcel = Boolean.parseBoolean(get(p, "report.excel", "true"));
         reportSwallowed = Boolean.parseBoolean(get(p, "report.swallowed", "true"));
         String scope = get(p, "scan.swallowed.scope", "TARGET").toUpperCase(Locale.ROOT);
         try {
@@ -405,7 +406,7 @@ public final class Config {
      */
     /** Hata yutan catch blokları veritabanına ve/veya Excel'e yazılır; ikisi de kapalıysa aranmaz */
     public boolean collectSwallowed() {
-        return (db.enabled || reportSwallowed) && swallowedScope != SwallowedScope.OFF;
+        return (db.enabled || (reportExcel && reportSwallowed)) && swallowedScope != SwallowedScope.OFF;
     }
 
     public boolean collectAllSwallowed() {
