@@ -194,6 +194,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.exception_scan_run` | Her tarama çalıştırması bir kayıt |
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
 | `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
+| `env.empty_catches` | Hata yutan catch blokları: aranan exception'ı yakalayıp gövdesi boş (veya sadece yorum) olanlar; `class_id` / `method_id` kullanımlardaki gibi eşleştirilir. `report.catch.blocks` kapalı olsa da `db.enabled=true` ile yazılır |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |
 | `env.v_exception_usage_summary` | Son tarama, proje ve tipe göre sayılar |
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |
@@ -211,6 +212,8 @@ java -jar target/system-code-analyzer-1.0.0.jar tarama.properties --db --db-note
 ```
 
 İlk seferde `--db-dry-run` ile deneyin: eşleştirme yapılır ve sonucu Excel'deki "DB Sınıf Id", "DB Metot Id", "Eşleşme" sütunlarında görünür, ama tabloya bir şey yazılmaz.
+
+`--db-note` (veya `db.note`) verilmezse tarama kaydının `note` sütununa taramanın başladığı an `21.10.2026 11:50:34 tarihli tarama` biçiminde yazılır (saat dilimi `db.note.zone`, varsayılan `Europe/Istanbul`).
 
 Her çalıştırma yeni bir `scan_run` kaydı açar ve kullanımları ona bağlar; aynı tarama iki kez çalışınca veri karışmaz. Kayıt tek transaction'da yapılır: yazma yarıda hata verirse hiçbir şey kaydedilmez. Veritabanına bağlanılamazsa raporlar yine eşleştirmesiz yazılır.
 

@@ -1,6 +1,7 @@
 package com.scanner.exception.db;
 
 import com.scanner.exception.config.Config;
+import com.scanner.exception.model.CatchFinding;
 import com.scanner.exception.model.EbmlFile;
 import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
@@ -149,6 +150,9 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int ebmlSkipped;
         /** env.exception_scan_error'a yazılan hata sayısı; tablo yoksa -1 */
         public int errors;
+        /** env.empty_catches'e yazılan boş catch bloğu sayısı; tablo yoksa -1 */
+        public int emptyCatches;
+        public int emptyCatchesSkipped;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -216,6 +220,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             if (cfg.ebml.enabled) insertEbml(results, ir);
             if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
             ir.errors = insertErrors(results, ir.runId);
+            insertEmptyCatches(results, ir);
 
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = clock_timestamp(), usage_count = ?"
@@ -668,6 +673,55 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         return count;
     }
 
+    /**
+     * Hata yutan (boş gövdeli) catch bloklarını yazar. Tablo henüz oluşturulmamışsa kullanımların yazılması
+     * engellenmesin diye atlanır, sayı -1 olur.
+     */
+    private void insertEmptyCatches(List<RepoResult> results, InsertResult ir) throws SQLException {
+        if (!exists(db.emptyCatchTable)) {
+            ir.emptyCatches = -1;
+            return;
+        }
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.emptyCatchTable
+                + " (scan_run_id, class_id, method_id, match_status, match_note, project_key, repo, file_path, line_no,"
+                + " class_fqcn, method_signature, exception_class, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        try {
+            int pending = 0;
+            for (RepoResult r : results) {
+                for (CatchFinding c : r.catches) {
+                    if (!c.emptyBody) continue;
+                    if (!db.insertUnmatched && DbMatcher.CLASS_NOT_FOUND.equals(c.matchStatus)) {
+                        ir.emptyCatchesSkipped++;
+                        continue;
+                    }
+                    int i = 1;
+                    ps.setLong(i++, ir.runId);
+                    setLong(ps, i++, c.dbClassId);
+                    setLong(ps, i++, c.dbMethodId);
+                    ps.setString(i++, c.matchStatus.isEmpty() ? DbMatcher.CLASS_NOT_FOUND : c.matchStatus);
+                    ps.setString(i++, cut(c.matchNote, 1000));
+                    ps.setString(i++, cut(c.projectKey, 100));
+                    ps.setString(i++, cut(c.repo, 200));
+                    ps.setString(i++, cut(c.file, 1000));
+                    ps.setInt(i++, c.line);
+                    ps.setString(i++, cut(c.className, 1000));
+                    ps.setString(i++, cut(c.member, 1000));
+                    ps.setString(i++, cut(c.caughtTypes, 300));
+                    ps.setString(i++, cut(c.link, 2000));
+                    ps.addBatch();
+                    ir.emptyCatches++;
+                    if (++pending >= BATCH) {
+                        ps.executeBatch();
+                        pending = 0;
+                    }
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+    }
+
     private boolean exists(String table) throws SQLException {
         PreparedStatement ps = con.prepareStatement("SELECT to_regclass(?) IS NOT NULL");
         try {
@@ -696,7 +750,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             ps.setInt(3, results.size());
             ps.setInt(4, javaFiles);
             ps.setString(5, String.join(",", cfg.exceptionClasses));
-            ps.setString(6, db.note.isEmpty() ? null : db.note);
+            ps.setString(6, db.note.isEmpty() ? defaultNote(startedAt) : db.note);
             ps.setString(7, cut(System.getProperty("user.name"), 100));
             ps.setString(8, cut(hostName(), 200));
             ResultSet rs = ps.executeQuery();
@@ -709,6 +763,12 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         } finally {
             ps.close();
         }
+    }
+
+    /** db.note verilmediğinde tarama kaydına yazılan açıklama: "21.10.2026 11:50:34 tarihli tarama" */
+    String defaultNote(java.time.Instant startedAt) {
+        return java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss").withZone(db.noteZone)
+                .format(startedAt) + " tarihli tarama";
     }
 
     public void close() {

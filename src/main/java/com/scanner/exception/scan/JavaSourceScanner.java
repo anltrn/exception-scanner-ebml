@@ -347,7 +347,8 @@ public final class JavaSourceScanner {
             result.usages.add(u);
         }
 
-        if (!cfg.reportCatches) return;
+        // Boş catch blokları veritabanına (db.empty.catch.table) yazıldığı için db açıkken de aranır
+        if (!cfg.reportCatches && !cfg.db.enabled) return;
         for (CatchClause cc : cu.findAll(CatchClause.class)) {
             List<String> matched = new ArrayList<String>();
             for (ClassOrInterfaceType t : caughtTypes(cc.getParameter().getType())) {

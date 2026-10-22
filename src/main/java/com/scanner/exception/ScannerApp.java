@@ -3,6 +3,7 @@ package com.scanner.exception;
 import com.scanner.exception.config.Config;
 import com.scanner.exception.db.DbMatcher;
 import com.scanner.exception.db.PostgresExporter;
+import com.scanner.exception.model.CatchFinding;
 import com.scanner.exception.model.EbmlFile;
 import com.scanner.exception.model.RepoInfo;
 import com.scanner.exception.model.RepoResult;
@@ -328,6 +329,11 @@ public final class ScannerApp {
                             ? "Uyarı: " + cfg.db.errorTable + " tablosu yok, tarama hataları veritabanına yazılmadı "
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.errors + " tarama hatası " + cfg.db.errorTable + " tablosuna yazıldı.");
+                    log(ir.emptyCatches < 0
+                            ? "Uyarı: " + cfg.db.emptyCatchTable + " tablosu yok, boş catch blokları veritabanına yazılmadı "
+                                    + "(sql/exception_scanner_postgres.sql ile oluşturun)."
+                            : "Veritabanı: " + ir.emptyCatches + " boş catch bloğu " + cfg.db.emptyCatchTable + " tablosuna yazıldı"
+                                    + (ir.emptyCatchesSkipped > 0 ? ", sınıfı bulunamayan " + ir.emptyCatchesSkipped + " atlandı" : "") + ".");
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0
@@ -381,10 +387,14 @@ public final class ScannerApp {
     private static PostgresExporter resolveInDatabase(Config cfg, List<RepoResult> results) {
         List<UsageFinding> all = new ArrayList<UsageFinding>();
         for (RepoResult r : results) all.addAll(r.usages);
+        List<CatchFinding> emptyCatches = new ArrayList<CatchFinding>();
+        for (RepoResult r : results) for (CatchFinding c : r.catches) if (c.emptyBody) emptyCatches.add(c);
         PostgresExporter pg = null;
         try {
             pg = new PostgresExporter(cfg);
-            new DbMatcher(cfg.db.caseInsensitive, cfg.db.constructorNames).resolveAll(all, pg);
+            List<com.scanner.exception.model.Located> toResolve = new ArrayList<com.scanner.exception.model.Located>(all);
+            toResolve.addAll(emptyCatches);
+            new DbMatcher(cfg.db.caseInsensitive, cfg.db.constructorNames).resolveAll(toResolve, pg);
             if (cfg.ebml.enabled) {
                 List<EbmlFile> ebmlFiles = new ArrayList<EbmlFile>();
                 for (RepoResult r : results) ebmlFiles.addAll(r.ebmlFiles);
@@ -412,6 +422,11 @@ public final class ScannerApp {
                 u.matchStatus = "";
                 u.dbClassId = null;
                 u.dbMethodId = null;
+            }
+            for (CatchFinding c : emptyCatches) {
+                c.matchStatus = "";
+                c.dbClassId = null;
+                c.dbMethodId = null;
             }
             for (RepoResult r : results) {
                 for (EbmlFile ef : r.ebmlFiles) {

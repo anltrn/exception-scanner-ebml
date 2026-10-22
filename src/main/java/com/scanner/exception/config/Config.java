@@ -178,7 +178,11 @@ public final class Config {
         public final boolean caseInsensitive;
         public final List<String> constructorNames;
         public final boolean insertUnmatched;
+        public final String emptyCatchTable;
+        /** Boşsa tarama kaydına "21.10.2026 11:50:34 tarihli tarama" yazılır */
         public final String note;
+        /** Varsayılan açıklamadaki saatin saat dilimi */
+        public final java.time.ZoneId noteZone;
         /** Otomatik tarama ön koşulu: deep-scanner'ın çalışma kayıtları (db.deep.scan.*) */
         public final String deepScanTable;
         public final String deepScanStatusColumn;
@@ -211,7 +215,9 @@ public final class Config {
             caseInsensitive = Boolean.parseBoolean(get(p, "db.fqcn.case.insensitive", "false"));
             constructorNames = list(get(p, "db.method.constructor.names", "<init>,{class}"));
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));
+            emptyCatchTable = ident(get(p, "db.empty.catch.table", schema + ".empty_catches"), "db.empty.catch.table");
             note = get(p, "db.note", "");
+            noteZone = java.time.ZoneId.of(get(p, "db.note.zone", "Europe/Istanbul"));
             deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");
             deepScanStatusColumn = ident(get(p, "db.deep.scan.status.column", "status"), "db.deep.scan.status.column");
             deepScanFinishedColumn = ident(get(p, "db.deep.scan.finished.column", "finished_at"),
