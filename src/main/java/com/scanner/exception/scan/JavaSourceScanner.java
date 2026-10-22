@@ -71,9 +71,11 @@ public final class JavaSourceScanner {
     private static final Pattern TEST_PATH = Pattern.compile("(^|.*/)(src/test|test|tests)/.*");
 
     private final Config cfg;
+    private final CatchClassifier catchClassifier;
 
     public JavaSourceScanner(Config cfg) {
         this.cfg = cfg;
+        this.catchClassifier = new CatchClassifier(cfg.swallowedLogNames);
     }
 
     /** Alt sınıf tespiti için bir sınıfın sadece başlık bilgisi (ayrıştırılmış dosya saklanmaz). */
@@ -158,15 +160,15 @@ public final class JavaSourceScanner {
 
         // ---- 2. geçiş: kullanımlar. Dosyalar paralel ayrıştırılır; her dosyanın sonucu ayrı toplanıp birleştirilir.
         final Set<String> finalTargets = targets;
-        final boolean allEmptyCatches = cfg.collectAllEmptyCatches();
+        final boolean allSwallowed = cfg.collectAllSwallowed();
         List<RepoResult> parts = parallel(scannable, f -> {
             RepoResult part = new RepoResult(repo);
             String rel = relative(root, f);
             try {
                 String source = readSource(f);
                 if (containsAny(source, configuredNames)) part.filesMentioningTarget++;
-                // scan.empty.catch.scope=ALL: aranan sınıf geçmese de catch içeren her dosya ayrıştırılır
-                if (!containsAny(source, keywords) && !(allEmptyCatches && source.contains("catch"))) {
+                // scan.swallowed.scope=ALL: aranan sınıf geçmese de catch içeren her dosya ayrıştırılır
+                if (!containsAny(source, keywords) && !(allSwallowed && source.contains("catch"))) {
                     return part.filesMentioningTarget > 0 ? part : null;
                 }
 
@@ -191,7 +193,7 @@ public final class JavaSourceScanner {
             result.parseFailures += part.parseFailures;
             result.usages.addAll(part.usages);
             result.catches.addAll(part.catches);
-            result.emptyCatches.addAll(part.emptyCatches);
+            result.swallowed.addAll(part.swallowed);
             result.errors.addAll(part.errors);
         }
 
@@ -352,9 +354,9 @@ public final class JavaSourceScanner {
             result.usages.add(u);
         }
 
-        boolean targetEmpty = cfg.collectEmptyCatches() && cfg.emptyCatchScope == Config.EmptyCatchScope.TARGET;
-        boolean allEmpty = cfg.collectAllEmptyCatches();
-        if (!cfg.reportCatches && !targetEmpty && !allEmpty) return;
+        boolean targetSwallowed = cfg.collectSwallowed() && cfg.swallowedScope == Config.SwallowedScope.TARGET;
+        boolean allSwallowed = cfg.collectAllSwallowed();
+        if (!cfg.reportCatches && !targetSwallowed && !allSwallowed) return;
         for (CatchClause cc : cu.findAll(CatchClause.class)) {
             List<String> matched = new ArrayList<String>();
             List<String> written = new ArrayList<String>();
@@ -363,27 +365,31 @@ public final class JavaSourceScanner {
                 String m = TypeMatcher.match(t.getNameWithScope(), ictx, targets, cfg.lenientMatch);
                 if (m != null) matched.add(TypeMatcher.simpleName(m));
             }
-            boolean empty = cc.getBody().getStatements().isEmpty();
-            if (matched.isEmpty() && !(allEmpty && empty)) continue;
+            CatchFinding.SwallowKind kind = catchClassifier.classify(cc.getBody());
+            boolean swallows = kind != null;
+            if (matched.isEmpty() && !(allSwallowed && swallows)) continue;
             CatchFinding c = new CatchFinding();
             fill(c, repo, rel, module, test, cc, cu);
             // ALL kapsamında yakalanan tiplerin hepsi, diğerlerinde sadece aranan sınıflar yazılır
-            c.caughtTypes = String.join(" | ", allEmpty && empty ? written : matched);
+            c.caughtTypes = String.join(" | ", allSwallowed && swallows ? written : matched);
             c.variable = cc.getParameter().getNameAsString();
-            c.emptyBody = empty;
+            c.emptyBody = kind == CatchFinding.SwallowKind.EMPTY;
+            c.swallowKind = kind;
             c.rethrows = !cc.getBody().findAll(ThrowStmt.class).isEmpty();
             if (cfg.reportCatches && !matched.isEmpty()) {
                 CatchFinding r = c;
-                if (allEmpty && empty) { // rapordaki catch sayfasında sadece aranan sınıflar görünsün
+                if (allSwallowed && swallows) { // rapordaki catch sayfasında sadece aranan sınıflar görünsün
                     r = new CatchFinding();
                     fill(r, repo, rel, module, test, cc, cu);
                     r.caughtTypes = String.join(" | ", matched);
                     r.variable = c.variable;
-                    r.emptyBody = true;
+                    r.emptyBody = c.emptyBody;
+                    r.swallowKind = kind;
+                    r.rethrows = c.rethrows;
                 }
                 result.catches.add(r);
             }
-            if (empty && (allEmpty || (targetEmpty && !matched.isEmpty()))) result.emptyCatches.add(c);
+            if (swallows && (allSwallowed || (targetSwallowed && !matched.isEmpty()))) result.swallowed.add(c);
         }
     }
 

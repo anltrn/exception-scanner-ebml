@@ -57,15 +57,17 @@ public final class Config {
     public final List<UsagePattern> patterns;
     public final boolean throwOnly;
     public final boolean reportCatches;
-    /** Veritabanına (db.empty.catch.table) yazılacak boş catch blokları: scan.empty.catch.scope */
-    public final EmptyCatchScope emptyCatchScope;
+    /** Veritabanına (db.swallowed.table) yazılacak hata yutan catch blokları: scan.swallowed.scope */
+    public final SwallowedScope swallowedScope;
+    /** Log nesnesi / log metodu sayılan adlar (scan.swallowed.log.names), büyük/küçük harf duyarsız */
+    public final List<String> swallowedLogNames;
 
-    public enum EmptyCatchScope {
+    public enum SwallowedScope {
         /** Aranan exception'ı (veya repodaki alt sınıfını) yakalayanlar */
         TARGET,
-        /** Tipine bakmadan tüm boş catch blokları; içinde catch geçen her dosya ayrıştırılır */
+        /** Tipine bakmadan hata yutan tüm catch blokları; içinde catch geçen her dosya ayrıştırılır */
         ALL,
-        /** Boş catch aranmaz */
+        /** Hata yutan catch aranmaz */
         OFF
     }
     public final int consoleLimit;
@@ -189,7 +191,7 @@ public final class Config {
         public final boolean caseInsensitive;
         public final List<String> constructorNames;
         public final boolean insertUnmatched;
-        public final String emptyCatchTable;
+        public final String swallowedTable;
         /** Boşsa tarama kaydına "21.10.2026 11:50:34 tarihli tarama" yazılır */
         public final String note;
         /** Varsayılan açıklamadaki saatin saat dilimi */
@@ -226,7 +228,7 @@ public final class Config {
             caseInsensitive = Boolean.parseBoolean(get(p, "db.fqcn.case.insensitive", "false"));
             constructorNames = list(get(p, "db.method.constructor.names", "<init>,{class}"));
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));
-            emptyCatchTable = ident(get(p, "db.empty.catch.table", schema + ".empty_catches"), "db.empty.catch.table");
+            swallowedTable = ident(get(p, "db.swallowed.table", schema + ".swallowed_exceptions"), "db.swallowed.table");
             note = get(p, "db.note", "");
             noteZone = java.time.ZoneId.of(get(p, "db.note.zone", "Europe/Istanbul"));
             deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");
@@ -288,12 +290,13 @@ public final class Config {
         patterns = UsagePattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
         reportCatches = Boolean.parseBoolean(get(p, "report.catch.blocks", "false"));
-        String scope = get(p, "scan.empty.catch.scope", "TARGET").toUpperCase(Locale.ROOT);
+        String scope = get(p, "scan.swallowed.scope", "TARGET").toUpperCase(Locale.ROOT);
         try {
-            emptyCatchScope = EmptyCatchScope.valueOf(scope);
+            swallowedScope = SwallowedScope.valueOf(scope);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("scan.empty.catch.scope TARGET, ALL veya OFF olmalı: " + scope);
+            throw new IllegalArgumentException("scan.swallowed.scope TARGET, ALL veya OFF olmalı: " + scope);
         }
+        swallowedLogNames = list(get(p, "scan.swallowed.log.names", "log,logger"));
         consoleLimit = Integer.parseInt(get(p, "console.limit", "200"));
         maxFileKb = Integer.parseInt(get(p, "scan.max.file.kb", "2048"));
         db = new Db(p);
@@ -357,12 +360,12 @@ public final class Config {
     }
 
     private void validate() {
-        if (exceptionClasses.isEmpty() && !ebml.enabled && !collectAllEmptyCatches()) {
+        if (exceptionClasses.isEmpty() && !ebml.enabled && !collectAllSwallowed()) {
             throw new IllegalArgumentException("Aranacak bir şey tanımlanmadı. Ayar dosyasında exception.classes "
                     + "boş ve komut satırında --class verilmedi. Ayar dosyasının doğru klasörde olduğunu "
                     + "ve exception.classes satırının dolu olduğunu kontrol edin. "
                     + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml, "
-                    + "sadece boş catch blokları için --db ile scan.empty.catch.scope=ALL)");
+                    + "sadece hata yutan catch blokları için --db ile scan.swallowed.scope=ALL)");
         }
         for (String c : exceptionClasses) {
             if (!c.contains(".")) {
@@ -397,13 +400,13 @@ public final class Config {
      * "PROJE/kalıp" sadece o projeyi daraltır; listede adı geçmeyen projelerin tüm repoları alınır.
      * Proje adı olmayan kalıp ("core-*") tüm projeleri daraltır. Yazımı exclude ile aynı.
      */
-    /** Boş catch blokları sadece veritabanına yazıldığı için db kapalıyken aranmaz */
-    public boolean collectEmptyCatches() {
-        return db.enabled && emptyCatchScope != EmptyCatchScope.OFF;
+    /** Hata yutan catch blokları sadece veritabanına yazıldığı için db kapalıyken aranmaz */
+    public boolean collectSwallowed() {
+        return db.enabled && swallowedScope != SwallowedScope.OFF;
     }
 
-    public boolean collectAllEmptyCatches() {
-        return db.enabled && emptyCatchScope == EmptyCatchScope.ALL;
+    public boolean collectAllSwallowed() {
+        return db.enabled && swallowedScope == SwallowedScope.ALL;
     }
 
     public boolean isIncluded(RepoInfo r) {

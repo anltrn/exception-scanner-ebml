@@ -329,14 +329,15 @@ public final class ScannerApp {
                             ? "Uyarı: " + cfg.db.errorTable + " tablosu yok, tarama hataları veritabanına yazılmadı "
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.errors + " tarama hatası " + cfg.db.errorTable + " tablosuna yazıldı.");
-                    if (cfg.emptyCatchScope != Config.EmptyCatchScope.OFF) log(ir.emptyCatches < 0
-                            ? "Uyarı: " + cfg.db.emptyCatchTable + " tablosu yok, boş catch blokları veritabanına yazılmadı "
+                    if (cfg.swallowedScope != Config.SwallowedScope.OFF) log(ir.swallowed < 0
+                            ? "Uyarı: " + cfg.db.swallowedTable + " tablosu yok, hata yutan catch blokları veritabanına yazılmadı "
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
-                            : "Veritabanı: " + ir.emptyCatches + " boş catch bloğu (scan.empty.catch.scope=" + cfg.emptyCatchScope + ") "
-                                    + cfg.db.emptyCatchTable + " tablosuna yazıldı"
-                                    + (ir.emptyCatchesSkipped > 0 ? ", sınıfı bulunamayan " + ir.emptyCatchesSkipped + " atlandı" : "") + ".");
-                    if (ir.emptyCatches >= 0 && !ir.emptyCatchCountWritten) {
-                        log("Uyarı: " + cfg.db.runTable + " tablosunda empty_catch_count sütunu yok, boş catch sayısı tarama kaydına "
+                            : "Veritabanı: " + ir.swallowed + " hata yutan catch bloğu " + ir.swallowedByKind
+                                    + " (scan.swallowed.scope=" + cfg.swallowedScope + ") "
+                                    + cfg.db.swallowedTable + " tablosuna yazıldı"
+                                    + (ir.swallowedSkipped > 0 ? ", sınıfı bulunamayan " + ir.swallowedSkipped + " atlandı" : "") + ".");
+                    if (ir.swallowed >= 0 && !ir.swallowedCountWritten) {
+                        log("Uyarı: " + cfg.db.runTable + " tablosunda empty_catch_count sütunu yok, hata yutan catch sayısı tarama kaydına "
                                 + "yazılmadı (ALTER TABLE " + cfg.db.runTable + " ADD COLUMN empty_catch_count integer).");
                     }
                     if (cfg.ebml.enabled) {
@@ -392,13 +393,13 @@ public final class ScannerApp {
     private static PostgresExporter resolveInDatabase(Config cfg, List<RepoResult> results) {
         List<UsageFinding> all = new ArrayList<UsageFinding>();
         for (RepoResult r : results) all.addAll(r.usages);
-        List<CatchFinding> emptyCatches = new ArrayList<CatchFinding>();
-        for (RepoResult r : results) emptyCatches.addAll(r.emptyCatches);
+        List<CatchFinding> swallowed = new ArrayList<CatchFinding>();
+        for (RepoResult r : results) swallowed.addAll(r.swallowed);
         PostgresExporter pg = null;
         try {
             pg = new PostgresExporter(cfg);
             List<com.scanner.exception.model.Located> toResolve = new ArrayList<com.scanner.exception.model.Located>(all);
-            toResolve.addAll(emptyCatches);
+            toResolve.addAll(swallowed);
             new DbMatcher(cfg.db.caseInsensitive, cfg.db.constructorNames).resolveAll(toResolve, pg);
             if (cfg.ebml.enabled) {
                 List<EbmlFile> ebmlFiles = new ArrayList<EbmlFile>();
@@ -428,7 +429,7 @@ public final class ScannerApp {
                 u.dbClassId = null;
                 u.dbMethodId = null;
             }
-            for (CatchFinding c : emptyCatches) {
+            for (CatchFinding c : swallowed) {
                 c.matchStatus = "";
                 c.dbClassId = null;
                 c.dbMethodId = null;
@@ -576,7 +577,7 @@ public final class ScannerApp {
     private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
         long t0 = System.nanoTime();
         try {
-            boolean java = !cfg.exceptionClasses.isEmpty() || cfg.collectAllEmptyCatches();
+            boolean java = !cfg.exceptionClasses.isEmpty() || cfg.collectAllSwallowed();
             RepoResult result = java ? scanner.scan(repo) : new RepoResult(repo);
             if (cfg.ebml.enabled) new EbmlScanner(cfg).scan(repo, result);
             return result;

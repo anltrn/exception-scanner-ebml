@@ -150,11 +150,13 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int ebmlSkipped;
         /** env.exception_scan_error'a yazılan hata sayısı; tablo yoksa -1 */
         public int errors;
-        /** env.empty_catches'e yazılan boş catch bloğu sayısı; tablo yoksa -1 */
-        public int emptyCatches;
-        public int emptyCatchesSkipped;
+        /** env.swallowed_exceptions'a yazılan hata yutan catch bloğu sayısı; tablo yoksa veya kapalıysa -1 */
+        public int swallowed;
+        public int swallowedSkipped;
+        /** catch_kind'e göre yazılan sayılar */
+        public final Map<String, Integer> swallowedByKind = new java.util.TreeMap<String, Integer>();
         /** false: tarama tablosunda empty_catch_count sütunu yok, sayı yazılmadı */
-        public boolean emptyCatchCountWritten;
+        public boolean swallowedCountWritten;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -222,11 +224,11 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             if (cfg.ebml.enabled) insertEbml(results, ir);
             if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
             ir.errors = insertErrors(results, ir.runId);
-            insertEmptyCatches(results, ir);
+            insertSwallowed(results, ir);
 
             // Sütun sonradan eklendi: SQL dosyasının eski sürümüyle kurulan tabloda yoksa yazılmaz
-            boolean catchCount = ir.emptyCatches >= 0 && hasColumn(db.runTable, "empty_catch_count");
-            ir.emptyCatchCountWritten = catchCount;
+            boolean catchCount = ir.swallowed >= 0 && hasColumn(db.runTable, "empty_catch_count");
+            ir.swallowedCountWritten = catchCount;
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = clock_timestamp(), usage_count = ?"
                     + (catchCount ? ", empty_catch_count = ?" : "")
@@ -236,7 +238,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             try {
                 int i = 1;
                 fin.setInt(i++, ir.inserted);
-                if (catchCount) fin.setInt(i++, ir.emptyCatches);
+                if (catchCount) fin.setInt(i++, ir.swallowed);
                 if (cfg.ebml.enabled) {
                     fin.setInt(i++, ir.screens);
                     fin.setInt(i++, ir.popups);
@@ -681,23 +683,23 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
     }
 
     /**
-     * Hata yutan (boş gövdeli) catch bloklarını yazar. Tablo henüz oluşturulmamışsa kullanımların yazılması
+     * Hata yutan (boş, sadece loglayan veya loglayıp return eden) catch bloklarını yazar. Tablo henüz oluşturulmamışsa kullanımların yazılması
      * engellenmesin diye atlanır, sayı -1 olur.
      */
-    private void insertEmptyCatches(List<RepoResult> results, InsertResult ir) throws SQLException {
-        if (cfg.emptyCatchScope == Config.EmptyCatchScope.OFF || !exists(db.emptyCatchTable)) {
-            ir.emptyCatches = -1;
+    private void insertSwallowed(List<RepoResult> results, InsertResult ir) throws SQLException {
+        if (cfg.swallowedScope == Config.SwallowedScope.OFF || !exists(db.swallowedTable)) {
+            ir.swallowed = -1;
             return;
         }
-        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.emptyCatchTable
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.swallowedTable
                 + " (scan_run_id, class_id, method_id, match_status, match_note, project_key, repo, file_path, line_no,"
-                + " class_fqcn, method_signature, exception_class, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                + " class_fqcn, method_signature, exception_class, catch_kind, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         try {
             int pending = 0;
             for (RepoResult r : results) {
-                for (CatchFinding c : r.emptyCatches) {
+                for (CatchFinding c : r.swallowed) {
                     if (!db.insertUnmatched && DbMatcher.CLASS_NOT_FOUND.equals(c.matchStatus)) {
-                        ir.emptyCatchesSkipped++;
+                        ir.swallowedSkipped++;
                         continue;
                     }
                     int i = 1;
@@ -713,9 +715,11 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                     ps.setString(i++, cut(c.className, 1000));
                     ps.setString(i++, cut(c.member, 1000));
                     ps.setString(i++, cut(c.caughtTypes, 300));
+                    ps.setString(i++, c.swallowKind.name());
                     ps.setString(i++, cut(c.link, 2000));
+                    ir.swallowedByKind.merge(c.swallowKind.name(), 1, Integer::sum);
                     ps.addBatch();
-                    ir.emptyCatches++;
+                    ir.swallowed++;
                     if (++pending >= BATCH) {
                         ps.executeBatch();
                         pending = 0;

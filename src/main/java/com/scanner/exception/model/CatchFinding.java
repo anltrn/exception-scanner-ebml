@@ -6,9 +6,22 @@ public final class CatchFinding extends Located {
     public String variable = "";
     public boolean emptyBody;
     public boolean rethrows;
+    /** Hatayı yutuyorsa nasıl yuttuğu (env.swallowed_exceptions.catch_kind); yutmuyorsa null */
+    public SwallowKind swallowKind;
+
+    public enum SwallowKind {
+        /** Gövde boş veya sadece yorum */
+        EMPTY,
+        /** Gövdede sadece log çağrıları var */
+        LOG_ONLY,
+        /** Log çağrıları ve ardından return (ör. return null) */
+        LOG_AND_RETURN
+    }
 
     public String note() {
         if (emptyBody) return "Exception yutuluyor, hata kayboluyor";
+        if (swallowKind == SwallowKind.LOG_ONLY) return "Sadece loglanıp yutuluyor, hata çağırana ulaşmıyor";
+        if (swallowKind == SwallowKind.LOG_AND_RETURN) return "Loglanıp return ediliyor, hata çağırana ulaşmıyor";
         if (!rethrows) return "Yakalanıp akış devam ediyor; yeni yapıya geçişte davranışı kontrol edin";
         return "Yeniden fırlatıyor";
     }

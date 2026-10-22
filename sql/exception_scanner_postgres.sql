@@ -51,7 +51,7 @@ CREATE TABLE env.exception_scan_run (
     repo_count         integer,
     java_file_count    integer,
     usage_count        integer,
-    empty_catch_count  integer,                        -- env.empty_catches'e yazılan boş catch bloğu sayısı
+    empty_catch_count  integer,                        -- env.swallowed_exceptions'a yazılan hata yutan catch bloğu sayısı
     exception_classes  text,
     note               text,                           -- --db-note ile verilen açıklama, yoksa "<tarih> tarihli tarama"
     run_by             varchar(100),
@@ -71,7 +71,7 @@ COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kayn
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
 COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
-COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.empty_catches tablosuna yazılan hata yutan (boş) catch bloğu sayısı (kapsamı scan.empty.catch.scope); db.insert.unmatched=false ile atlananlar sayılmaz. env.empty_catches tablosu yoksa veya scan.empty.catch.scope=OFF ise boş';
+COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.swallowed_exceptions tablosuna yazılan hata yutan catch bloğu sayısı (kapsamı scan.swallowed.scope); db.insert.unmatched=false ile atlananlar sayılmaz. env.swallowed_exceptions tablosu yoksa veya scan.swallowed.scope=OFF ise boş';
 COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse taramanın başladığı an "21.10.2026 11:50:34 tarihli tarama" biçiminde yazılır (saat dilimi db.note.zone, varsayılan Europe/Istanbul)';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';
@@ -475,9 +475,9 @@ SELECT project_id,
 --    ORDER BY p.process_id;
 
 -- =====================================================================
---  Hata yutan (boş) catch blokları
+--  Hata yutan catch blokları: boş, sadece loglayan veya loglayıp return eden
 -- =====================================================================
-CREATE TABLE env.empty_catches (
+CREATE TABLE env.swallowed_exceptions (
     id               bigserial    PRIMARY KEY,
     scan_run_id      bigint       NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
     -- Tarama anındaki env.java_class / env.java_method id'leri. FK yok: o tablolar her
@@ -499,29 +499,31 @@ CREATE TABLE env.empty_catches (
     class_fqcn       varchar(1000) NOT NULL,           -- kodda bulunan sınıf (anonim sınıf dahil)
     method_signature varchar(1000),                    -- kodda bulunan metot: getRate(String, String)
     exception_class  varchar(300),                     -- yakalanan exception: CSException (multi-catch'te A | B)
+    catch_kind       varchar(20)  NOT NULL,            -- EMPTY | LOG_ONLY | LOG_AND_RETURN
     link             varchar(2000),
     created_at       timestamptz  NOT NULL DEFAULT now(),
 
-    CONSTRAINT ck_empty_catches_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
+    CONSTRAINT ck_swallowed_exceptions_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
 );
 
-COMMENT ON TABLE  env.empty_catches IS 'Hata yutan catch blokları: gövdesinde hiçbir komut olmayan (boş veya sadece yorum içeren) her catch bloğu için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Kapsamı scan.empty.catch.scope belirler: TARGET (varsayılan) aranan exception sınıflarından (exception.classes ve repoda onlardan türeyen alt sınıflar) birini yakalayanlar, ALL tipine bakmadan hepsi, OFF hiçbiri. db.enabled=true ile yapılan her taramada yazılır; her kayıt bir taramaya bağlıdır.';
-COMMENT ON COLUMN env.empty_catches.id IS 'Kayıt numarası (otomatik artan)';
-COMMENT ON COLUMN env.empty_catches.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
-COMMENT ON COLUMN env.empty_catches.class_id IS 'Tarama anında catch bloğunun bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
-COMMENT ON COLUMN env.empty_catches.method_id IS 'Tarama anında catch bloğunun bulunduğu metodun env.java_method id''si (db.method.*); metot bulunamadıysa (METHOD_NOT_FOUND, NO_METHOD, CLASS_NOT_FOUND veya metodu bulunamayan CLASS_AMBIGUOUS) boş. FK yok; class_id boşken dolu olamaz';
-COMMENT ON COLUMN env.empty_catches.match_status IS 'Envanter eşleştirmesinin sonucu: MATCHED (sınıf ve metot bulundu), METHOD_AMBIGUOUS (aynı adda birden fazla metot, en küçük id seçildi), METHOD_NOT_FOUND (sınıf bulundu, metot bulunamadı), NO_METHOD (catch bloğu static/instance blokta veya metot dışında), CLASS_AMBIGUOUS (aynı FQCN birden fazla kayıtta, en küçük id seçildi), CLASS_NOT_FOUND (sınıf envanterde yok; db.insert.unmatched=false ise bu kayıtlar yazılmaz)';
-COMMENT ON COLUMN env.empty_catches.match_note IS 'Eşleştirme sonucunun açıklaması, ör. CLASS_NOT_FOUND için denenen adlar ("Aranan: a.b.Dis$Ic, a.b.Dis.Ic, a.b.Dis"), overload seçimi, dış sınıfa veya anonim sınıfı içeren sınıfa düşülmesi; açıklama yoksa boş';
-COMMENT ON COLUMN env.empty_catches.project_key IS 'Reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
-COMMENT ON COLUMN env.empty_catches.repo IS 'Repo slug''ı (Bitbucket/git adresindeki repo adı; source=LOCAL için repo klasörünün adı)';
-COMMENT ON COLUMN env.empty_catches.file_path IS 'Catch bloğunun bulunduğu .java dosyasının repo içindeki yolu, / ayraçlı (ör. src/main/java/a/b/Dis.java)';
-COMMENT ON COLUMN env.empty_catches.line_no IS 'Catch bloğunun (catch anahtar kelimesinin) başladığı satır; bilinmiyorsa 0';
-COMMENT ON COLUMN env.empty_catches.class_fqcn IS 'Catch bloğunun kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
-COMMENT ON COLUMN env.empty_catches.method_signature IS 'Catch bloğunun kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
-COMMENT ON COLUMN env.empty_catches.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.empty.catch.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
-COMMENT ON COLUMN env.empty_catches.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
-COMMENT ON COLUMN env.empty_catches.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
+COMMENT ON TABLE  env.swallowed_exceptions IS 'Hata yutan catch blokları: hatayı çağırana iletmeden akışa devam eden her catch bloğu için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Nasıl yuttuğu catch_kind sütunundadır (EMPTY, LOG_ONLY, LOG_AND_RETURN). Kapsamı scan.swallowed.scope belirler: TARGET (varsayılan) aranan exception sınıflarından (exception.classes ve repoda onlardan türeyen alt sınıflar) birini yakalayanlar, ALL tipine bakmadan hepsi, OFF hiçbiri. db.enabled=true ile yapılan her taramada yazılır; her kayıt bir taramaya bağlıdır.';
+COMMENT ON COLUMN env.swallowed_exceptions.id IS 'Kayıt numarası (otomatik artan)';
+COMMENT ON COLUMN env.swallowed_exceptions.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
+COMMENT ON COLUMN env.swallowed_exceptions.class_id IS 'Tarama anında catch bloğunun bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
+COMMENT ON COLUMN env.swallowed_exceptions.method_id IS 'Tarama anında catch bloğunun bulunduğu metodun env.java_method id''si (db.method.*); metot bulunamadıysa (METHOD_NOT_FOUND, NO_METHOD, CLASS_NOT_FOUND veya metodu bulunamayan CLASS_AMBIGUOUS) boş. FK yok; class_id boşken dolu olamaz';
+COMMENT ON COLUMN env.swallowed_exceptions.match_status IS 'Envanter eşleştirmesinin sonucu: MATCHED (sınıf ve metot bulundu), METHOD_AMBIGUOUS (aynı adda birden fazla metot, en küçük id seçildi), METHOD_NOT_FOUND (sınıf bulundu, metot bulunamadı), NO_METHOD (catch bloğu static/instance blokta veya metot dışında), CLASS_AMBIGUOUS (aynı FQCN birden fazla kayıtta, en küçük id seçildi), CLASS_NOT_FOUND (sınıf envanterde yok; db.insert.unmatched=false ise bu kayıtlar yazılmaz)';
+COMMENT ON COLUMN env.swallowed_exceptions.match_note IS 'Eşleştirme sonucunun açıklaması, ör. CLASS_NOT_FOUND için denenen adlar ("Aranan: a.b.Dis$Ic, a.b.Dis.Ic, a.b.Dis"), overload seçimi, dış sınıfa veya anonim sınıfı içeren sınıfa düşülmesi; açıklama yoksa boş';
+COMMENT ON COLUMN env.swallowed_exceptions.project_key IS 'Reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
+COMMENT ON COLUMN env.swallowed_exceptions.repo IS 'Repo slug''ı (Bitbucket/git adresindeki repo adı; source=LOCAL için repo klasörünün adı)';
+COMMENT ON COLUMN env.swallowed_exceptions.file_path IS 'Catch bloğunun bulunduğu .java dosyasının repo içindeki yolu, / ayraçlı (ör. src/main/java/a/b/Dis.java)';
+COMMENT ON COLUMN env.swallowed_exceptions.line_no IS 'Catch bloğunun (catch anahtar kelimesinin) başladığı satır; bilinmiyorsa 0';
+COMMENT ON COLUMN env.swallowed_exceptions.class_fqcn IS 'Catch bloğunun kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
+COMMENT ON COLUMN env.swallowed_exceptions.method_signature IS 'Catch bloğunun kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
+COMMENT ON COLUMN env.swallowed_exceptions.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.swallowed.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
+COMMENT ON COLUMN env.swallowed_exceptions.catch_kind IS 'Hatanın nasıl yutulduğu: EMPTY (gövde boş veya sadece yorum), LOG_ONLY (gövdede sadece log çağrıları var, ör. log.error("x", e) veya e.printStackTrace()), LOG_AND_RETURN (log çağrılarından sonra return, ör. log.error(...); return null;). Log çağrısı sayılanlar: printStackTrace, System.out/err, adı scan.swallowed.log.names''te olan (varsayılan log, logger) veya logger ile biten nesnelerin metotları, getLogger()/getLog() sonucunun metotları, log ile başlayan nesnesiz çağrılar (logError(e)) ve sadece log içeren if blokları';
+COMMENT ON COLUMN env.swallowed_exceptions.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
+COMMENT ON COLUMN env.swallowed_exceptions.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
-CREATE INDEX ix_empty_catches_run    ON env.empty_catches (scan_run_id);
-CREATE INDEX ix_empty_catches_class  ON env.empty_catches (class_id);
-CREATE INDEX ix_empty_catches_method ON env.empty_catches (method_id);
+CREATE INDEX ix_swallowed_exceptions_run ON env.swallowed_exceptions (scan_run_id);
+CREATE INDEX ix_swallowed_exceptions_class ON env.swallowed_exceptions (class_id);
+CREATE INDEX ix_swallowed_exceptions_method ON env.swallowed_exceptions (method_id);
