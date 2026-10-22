@@ -57,6 +57,17 @@ public final class Config {
     public final List<UsagePattern> patterns;
     public final boolean throwOnly;
     public final boolean reportCatches;
+    /** Veritabanına (db.empty.catch.table) yazılacak boş catch blokları: scan.empty.catch.scope */
+    public final EmptyCatchScope emptyCatchScope;
+
+    public enum EmptyCatchScope {
+        /** Aranan exception'ı (veya repodaki alt sınıfını) yakalayanlar */
+        TARGET,
+        /** Tipine bakmadan tüm boş catch blokları; içinde catch geçen her dosya ayrıştırılır */
+        ALL,
+        /** Boş catch aranmaz */
+        OFF
+    }
     public final int consoleLimit;
     public final int maxFileKb;
     public final Db db;
@@ -277,6 +288,12 @@ public final class Config {
         patterns = UsagePattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
         reportCatches = Boolean.parseBoolean(get(p, "report.catch.blocks", "false"));
+        String scope = get(p, "scan.empty.catch.scope", "TARGET").toUpperCase(Locale.ROOT);
+        try {
+            emptyCatchScope = EmptyCatchScope.valueOf(scope);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("scan.empty.catch.scope TARGET, ALL veya OFF olmalı: " + scope);
+        }
         consoleLimit = Integer.parseInt(get(p, "console.limit", "200"));
         maxFileKb = Integer.parseInt(get(p, "scan.max.file.kb", "2048"));
         db = new Db(p);
@@ -340,11 +357,12 @@ public final class Config {
     }
 
     private void validate() {
-        if (exceptionClasses.isEmpty() && !ebml.enabled) {
+        if (exceptionClasses.isEmpty() && !ebml.enabled && !collectAllEmptyCatches()) {
             throw new IllegalArgumentException("Aranacak bir şey tanımlanmadı. Ayar dosyasında exception.classes "
                     + "boş ve komut satırında --class verilmedi. Ayar dosyasının doğru klasörde olduğunu "
                     + "ve exception.classes satırının dolu olduğunu kontrol edin. "
-                    + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml)");
+                    + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml, "
+                    + "sadece boş catch blokları için --db ile scan.empty.catch.scope=ALL)");
         }
         for (String c : exceptionClasses) {
             if (!c.contains(".")) {
@@ -379,6 +397,15 @@ public final class Config {
      * "PROJE/kalıp" sadece o projeyi daraltır; listede adı geçmeyen projelerin tüm repoları alınır.
      * Proje adı olmayan kalıp ("core-*") tüm projeleri daraltır. Yazımı exclude ile aynı.
      */
+    /** Boş catch blokları sadece veritabanına yazıldığı için db kapalıyken aranmaz */
+    public boolean collectEmptyCatches() {
+        return db.enabled && emptyCatchScope != EmptyCatchScope.OFF;
+    }
+
+    public boolean collectAllEmptyCatches() {
+        return db.enabled && emptyCatchScope == EmptyCatchScope.ALL;
+    }
+
     public boolean isIncluded(RepoInfo r) {
         boolean restricted = false;
         for (String e : includeRepos) {

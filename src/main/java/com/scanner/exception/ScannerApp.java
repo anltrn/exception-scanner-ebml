@@ -329,10 +329,11 @@ public final class ScannerApp {
                             ? "Uyarı: " + cfg.db.errorTable + " tablosu yok, tarama hataları veritabanına yazılmadı "
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.errors + " tarama hatası " + cfg.db.errorTable + " tablosuna yazıldı.");
-                    log(ir.emptyCatches < 0
+                    if (cfg.emptyCatchScope != Config.EmptyCatchScope.OFF) log(ir.emptyCatches < 0
                             ? "Uyarı: " + cfg.db.emptyCatchTable + " tablosu yok, boş catch blokları veritabanına yazılmadı "
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
-                            : "Veritabanı: " + ir.emptyCatches + " boş catch bloğu " + cfg.db.emptyCatchTable + " tablosuna yazıldı"
+                            : "Veritabanı: " + ir.emptyCatches + " boş catch bloğu (scan.empty.catch.scope=" + cfg.emptyCatchScope + ") "
+                                    + cfg.db.emptyCatchTable + " tablosuna yazıldı"
                                     + (ir.emptyCatchesSkipped > 0 ? ", sınıfı bulunamayan " + ir.emptyCatchesSkipped + " atlandı" : "") + ".");
                     if (ir.emptyCatches >= 0 && !ir.emptyCatchCountWritten) {
                         log("Uyarı: " + cfg.db.runTable + " tablosunda empty_catch_count sütunu yok, boş catch sayısı tarama kaydına "
@@ -392,7 +393,7 @@ public final class ScannerApp {
         List<UsageFinding> all = new ArrayList<UsageFinding>();
         for (RepoResult r : results) all.addAll(r.usages);
         List<CatchFinding> emptyCatches = new ArrayList<CatchFinding>();
-        for (RepoResult r : results) for (CatchFinding c : r.catches) if (c.emptyBody) emptyCatches.add(c);
+        for (RepoResult r : results) emptyCatches.addAll(r.emptyCatches);
         PostgresExporter pg = null;
         try {
             pg = new PostgresExporter(cfg);
@@ -575,7 +576,8 @@ public final class ScannerApp {
     private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
         long t0 = System.nanoTime();
         try {
-            RepoResult result = !cfg.exceptionClasses.isEmpty() ? scanner.scan(repo) : new RepoResult(repo);
+            boolean java = !cfg.exceptionClasses.isEmpty() || cfg.collectAllEmptyCatches();
+            RepoResult result = java ? scanner.scan(repo) : new RepoResult(repo);
             if (cfg.ebml.enabled) new EbmlScanner(cfg).scan(repo, result);
             return result;
         } catch (RuntimeException e) {

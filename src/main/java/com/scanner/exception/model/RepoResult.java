@@ -13,6 +13,8 @@ public final class RepoResult {
     public int parseFailures;
     public final List<UsageFinding> usages = new ArrayList<UsageFinding>();
     public final List<CatchFinding> catches = new ArrayList<CatchFinding>();
+    /** Hata yutan (boş gövdeli) catch blokları, kapsamı scan.empty.catch.scope belirler */
+    public final List<CatchFinding> emptyCatches = new ArrayList<CatchFinding>();
     public final List<SubclassFinding> subclasses = new ArrayList<SubclassFinding>();
     public final List<ScanError> errors = new ArrayList<ScanError>();
     /** Ekran, region ve Jasper rapor dosyaları (ebml.enabled=true ise) */

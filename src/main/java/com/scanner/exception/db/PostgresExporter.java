@@ -685,7 +685,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
      * engellenmesin diye atlanır, sayı -1 olur.
      */
     private void insertEmptyCatches(List<RepoResult> results, InsertResult ir) throws SQLException {
-        if (!exists(db.emptyCatchTable)) {
+        if (cfg.emptyCatchScope == Config.EmptyCatchScope.OFF || !exists(db.emptyCatchTable)) {
             ir.emptyCatches = -1;
             return;
         }
@@ -695,8 +695,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         try {
             int pending = 0;
             for (RepoResult r : results) {
-                for (CatchFinding c : r.catches) {
-                    if (!c.emptyBody) continue;
+                for (CatchFinding c : r.emptyCatches) {
                     if (!db.insertUnmatched && DbMatcher.CLASS_NOT_FOUND.equals(c.matchStatus)) {
                         ir.emptyCatchesSkipped++;
                         continue;

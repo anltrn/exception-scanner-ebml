@@ -71,7 +71,7 @@ COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kayn
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
 COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
-COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.empty_catches tablosuna yazılan hata yutan (boş) catch bloğu sayısı; db.insert.unmatched=false ile atlananlar sayılmaz. env.empty_catches tablosu yoksa boş';
+COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.empty_catches tablosuna yazılan hata yutan (boş) catch bloğu sayısı (kapsamı scan.empty.catch.scope); db.insert.unmatched=false ile atlananlar sayılmaz. env.empty_catches tablosu yoksa veya scan.empty.catch.scope=OFF ise boş';
 COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse taramanın başladığı an "21.10.2026 11:50:34 tarihli tarama" biçiminde yazılır (saat dilimi db.note.zone, varsayılan Europe/Istanbul)';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';
@@ -505,7 +505,7 @@ CREATE TABLE env.empty_catches (
     CONSTRAINT ck_empty_catches_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
 );
 
-COMMENT ON TABLE  env.empty_catches IS 'Hata yutan catch blokları: aranan exception sınıflarından (exception.classes ve repoda onlardan türeyen alt sınıflar) birini yakalayıp gövdesinde hiçbir komut olmayan (boş veya sadece yorum içeren) her catch bloğu için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. db.enabled=true ile yapılan her taramada yazılır; her kayıt bir taramaya bağlıdır.';
+COMMENT ON TABLE  env.empty_catches IS 'Hata yutan catch blokları: gövdesinde hiçbir komut olmayan (boş veya sadece yorum içeren) her catch bloğu için bir kayıt, bulunduğu sınıf ve metodun envanterdeki id''leriyle. Kapsamı scan.empty.catch.scope belirler: TARGET (varsayılan) aranan exception sınıflarından (exception.classes ve repoda onlardan türeyen alt sınıflar) birini yakalayanlar, ALL tipine bakmadan hepsi, OFF hiçbiri. db.enabled=true ile yapılan her taramada yazılır; her kayıt bir taramaya bağlıdır.';
 COMMENT ON COLUMN env.empty_catches.id IS 'Kayıt numarası (otomatik artan)';
 COMMENT ON COLUMN env.empty_catches.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
 COMMENT ON COLUMN env.empty_catches.class_id IS 'Tarama anında catch bloğunun bulunduğu sınıfın env.java_class id''si (db.class.*); CLASS_NOT_FOUND ise boş. FK yok, envanter yeniden yüklenince değişebilir: kalıcı eşleştirme için class_fqcn kullanılmalı';
@@ -518,7 +518,7 @@ COMMENT ON COLUMN env.empty_catches.file_path IS 'Catch bloğunun bulunduğu .ja
 COMMENT ON COLUMN env.empty_catches.line_no IS 'Catch bloğunun (catch anahtar kelimesinin) başladığı satır; bilinmiyorsa 0';
 COMMENT ON COLUMN env.empty_catches.class_fqcn IS 'Catch bloğunun kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
 COMMENT ON COLUMN env.empty_catches.method_signature IS 'Catch bloğunun kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
-COMMENT ON COLUMN env.empty_catches.exception_class IS 'Yakalanan exception sınıfının basit adı (exception.classes''taki sınıf veya repoda ondan türeyen alt sınıf, ör. CSException); multi-catch''te aranan sınıflardan yakalananlar " | " ile ayrılır';
+COMMENT ON COLUMN env.empty_catches.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.empty.catch.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
 COMMENT ON COLUMN env.empty_catches.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
 COMMENT ON COLUMN env.empty_catches.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 

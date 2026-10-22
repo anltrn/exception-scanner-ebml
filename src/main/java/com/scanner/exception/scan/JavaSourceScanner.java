@@ -158,13 +158,17 @@ public final class JavaSourceScanner {
 
         // ---- 2. geçiş: kullanımlar. Dosyalar paralel ayrıştırılır; her dosyanın sonucu ayrı toplanıp birleştirilir.
         final Set<String> finalTargets = targets;
+        final boolean allEmptyCatches = cfg.collectAllEmptyCatches();
         List<RepoResult> parts = parallel(scannable, f -> {
             RepoResult part = new RepoResult(repo);
             String rel = relative(root, f);
             try {
                 String source = readSource(f);
                 if (containsAny(source, configuredNames)) part.filesMentioningTarget++;
-                if (!containsAny(source, keywords)) return part.filesMentioningTarget > 0 ? part : null;
+                // scan.empty.catch.scope=ALL: aranan sınıf geçmese de catch içeren her dosya ayrıştırılır
+                if (!containsAny(source, keywords) && !(allEmptyCatches && source.contains("catch"))) {
+                    return part.filesMentioningTarget > 0 ? part : null;
+                }
 
                 ParseResult<CompilationUnit> pr = parse(source);
                 if (!pr.isSuccessful()) {
@@ -187,6 +191,7 @@ public final class JavaSourceScanner {
             result.parseFailures += part.parseFailures;
             result.usages.addAll(part.usages);
             result.catches.addAll(part.catches);
+            result.emptyCatches.addAll(part.emptyCatches);
             result.errors.addAll(part.errors);
         }
 
@@ -347,22 +352,38 @@ public final class JavaSourceScanner {
             result.usages.add(u);
         }
 
-        // Boş catch blokları veritabanına (db.empty.catch.table) yazıldığı için db açıkken de aranır
-        if (!cfg.reportCatches && !cfg.db.enabled) return;
+        boolean targetEmpty = cfg.collectEmptyCatches() && cfg.emptyCatchScope == Config.EmptyCatchScope.TARGET;
+        boolean allEmpty = cfg.collectAllEmptyCatches();
+        if (!cfg.reportCatches && !targetEmpty && !allEmpty) return;
         for (CatchClause cc : cu.findAll(CatchClause.class)) {
             List<String> matched = new ArrayList<String>();
+            List<String> written = new ArrayList<String>();
             for (ClassOrInterfaceType t : caughtTypes(cc.getParameter().getType())) {
+                written.add(t.getNameAsString());
                 String m = TypeMatcher.match(t.getNameWithScope(), ictx, targets, cfg.lenientMatch);
                 if (m != null) matched.add(TypeMatcher.simpleName(m));
             }
-            if (matched.isEmpty()) continue;
+            boolean empty = cc.getBody().getStatements().isEmpty();
+            if (matched.isEmpty() && !(allEmpty && empty)) continue;
             CatchFinding c = new CatchFinding();
             fill(c, repo, rel, module, test, cc, cu);
-            c.caughtTypes = String.join(" | ", matched);
+            // ALL kapsamında yakalanan tiplerin hepsi, diğerlerinde sadece aranan sınıflar yazılır
+            c.caughtTypes = String.join(" | ", allEmpty && empty ? written : matched);
             c.variable = cc.getParameter().getNameAsString();
-            c.emptyBody = cc.getBody().getStatements().isEmpty();
+            c.emptyBody = empty;
             c.rethrows = !cc.getBody().findAll(ThrowStmt.class).isEmpty();
-            result.catches.add(c);
+            if (cfg.reportCatches && !matched.isEmpty()) {
+                CatchFinding r = c;
+                if (allEmpty && empty) { // rapordaki catch sayfasında sadece aranan sınıflar görünsün
+                    r = new CatchFinding();
+                    fill(r, repo, rel, module, test, cc, cu);
+                    r.caughtTypes = String.join(" | ", matched);
+                    r.variable = c.variable;
+                    r.emptyBody = true;
+                }
+                result.catches.add(r);
+            }
+            if (empty && (allEmpty || (targetEmpty && !matched.isEmpty()))) result.emptyCatches.add(c);
         }
     }
 
