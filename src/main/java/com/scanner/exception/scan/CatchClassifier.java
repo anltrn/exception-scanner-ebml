@@ -1,9 +1,12 @@
 package com.scanner.exception.scan;
 
+import com.github.javaparser.ast.expr.EnclosedExpr;
 import com.github.javaparser.ast.expr.Expression;
 import com.github.javaparser.ast.expr.FieldAccessExpr;
+import com.github.javaparser.ast.expr.LiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.EmptyStmt;
 import com.github.javaparser.ast.stmt.ExpressionStmt;
@@ -21,7 +24,8 @@ import java.util.regex.Pattern;
 
 /**
  * Bir catch bloğunun hatayı yutup yutmadığını gövdesine bakarak sınıflandırır:
- * EMPTY (boş veya sadece yorum), LOG_ONLY (sadece log), LOG_AND_RETURN (log ve ardından return).
+ * EMPTY (boş veya sadece yorum), LOG_ONLY (sadece log), LOG_AND_RETURN (log ve ardından return),
+ * RETURN_ONLY (log olmadan sadece sabit değerle return: null, false, "", 0, -1 veya değersiz return).
  *
  * Log çağrısı: e.printStackTrace(), System.out/err.print*, adı scan.swallowed.log.names'te olan
  * (ör. log, logger) veya "logger" ile biten nesnelerin metotları, getLogger()/getLog() sonucunun
@@ -47,9 +51,21 @@ public final class CatchClassifier {
         Statement last = stmts.get(stmts.size() - 1);
         if (last instanceof ReturnStmt) {
             List<Statement> before = stmts.subList(0, stmts.size() - 1);
-            return !before.isEmpty() && allLog(before) ? SwallowKind.LOG_AND_RETURN : null;
+            if (before.isEmpty()) return isConstantReturn((ReturnStmt) last) ? SwallowKind.RETURN_ONLY : null;
+            return allLog(before) ? SwallowKind.LOG_AND_RETURN : null;
         }
         return allLog(stmts) ? SwallowKind.LOG_ONLY : null;
+    }
+
+    /** return; return null; return false; return ""; return 0; return -1; */
+    private static boolean isConstantReturn(ReturnStmt r) {
+        if (!r.getExpression().isPresent()) return true;
+        Expression e = r.getExpression().get();
+        while (e instanceof EnclosedExpr) e = ((EnclosedExpr) e).getInner();
+        if (e instanceof UnaryExpr && ((UnaryExpr) e).getOperator() == UnaryExpr.Operator.MINUS) {
+            e = ((UnaryExpr) e).getExpression();
+        }
+        return e instanceof LiteralExpr;
     }
 
     private boolean allLog(List<Statement> stmts) {

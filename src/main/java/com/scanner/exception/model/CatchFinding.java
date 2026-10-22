@@ -15,13 +15,16 @@ public final class CatchFinding extends Located {
         /** Gövdede sadece log çağrıları var */
         LOG_ONLY,
         /** Log çağrıları ve ardından return (ör. return null) */
-        LOG_AND_RETURN
+        LOG_AND_RETURN,
+        /** Log olmadan sadece sabit değerle return: return null, return false, return "", return; */
+        RETURN_ONLY
     }
 
     public String note() {
         if (emptyBody) return "Exception yutuluyor, hata kayboluyor";
         if (swallowKind == SwallowKind.LOG_ONLY) return "Sadece loglanıp yutuluyor, hata çağırana ulaşmıyor";
         if (swallowKind == SwallowKind.LOG_AND_RETURN) return "Loglanıp return ediliyor, hata çağırana ulaşmıyor";
+        if (swallowKind == SwallowKind.RETURN_ONLY) return "Loglanmadan sabit değer dönülüyor, hata kayboluyor";
         if (!rethrows) return "Yakalanıp akış devam ediyor; yeni yapıya geçişte davranışı kontrol edin";
         return "Yeniden fırlatıyor";
     }
