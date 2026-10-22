@@ -66,6 +66,7 @@ public final class ExcelReportWriter {
             usages(wb, st, results);
             messages(wb, st, results);
             if (cfg.reportCatches) catches(wb, st, results);
+            if (swallowedSheet()) swallowed(wb, st, results);
             subclasses(wb, st, results);
             if (cfg.ebml.enabled) ebmlFiles(wb, st, results);
             errors(wb, st, results);
@@ -132,6 +133,18 @@ public final class ExcelReportWriter {
             row = kv(s, st, row, "Catch blokları", catchCount);
             row = kv(s, st, row, "   Boş catch (exception yutuluyor)", empty);
         }
+        if (swallowedSheet()) {
+            Map<String, Long> kinds = new java.util.LinkedHashMap<String, Long>();
+            for (CatchFinding.SwallowKind k : CatchFinding.SwallowKind.values()) kinds.put(k.name(), 0L);
+            long sw = 0;
+            for (RepoResult r : results) {
+                for (CatchFinding c : r.swallowed) kinds.merge(c.swallowKind.name(), 1L, Long::sum);
+                sw += r.swallowed.size();
+            }
+            row = kv(s, st, row, "Hata yutan catch blokları (scan.swallowed.scope=" + cfg.swallowedScope
+                    + ", detaylar: 'Yutulan Exception'lar')", sw);
+            for (Map.Entry<String, Long> en : kinds.entrySet()) row = kv(s, st, row, "   " + en.getKey(), en.getValue());
+        }
         if (cfg.db.enabled) {
             Map<String, Integer> match = new java.util.TreeMap<String, Integer>();
             for (RepoResult r : results) {
@@ -175,6 +188,10 @@ public final class ExcelReportWriter {
             widths.add(10);
             widths.add(11);
         }
+        if (swallowedSheet()) {
+            headers.add("Yutulan Exception");
+            widths.add(12);
+        }
         if (cfg.ebml.enabled) {
             for (EbmlFile.Kind k : EBML_KINDS) {
                 headers.add(k.label);
@@ -206,6 +223,7 @@ public final class ExcelReportWriter {
                 num(x, c++, r.catches.size());
                 num(x, c++, r.emptyCatches());
             }
+            if (swallowedSheet()) num(x, c++, r.swallowed.size());
             if (cfg.ebml.enabled) {
                 for (EbmlFile.Kind k : EBML_KINDS) num(x, c++, r.count(k));
             }
@@ -370,8 +388,8 @@ public final class ExcelReportWriter {
         Sheet s = wb.createSheet("Catch Blokları");
         Table t = new Table(s, st, 0, true,
                 new String[]{"Proje", "Repo", "Modül", "Dosya", "Sınıf", "Metot", "Satır", "Yakalanan Tip",
-                        "Değişken", "Boş Blok", "Yeniden Fırlatıyor", "Not", "Test Kodu", "Bağlantı"},
-                new int[]{14, 24, 20, 50, 40, 36, 7, 24, 12, 10, 18, 60, 10, 18});
+                        "Değişken", "Boş Blok", "Yeniden Fırlatıyor", "Yutma Türü", "Not", "Test Kodu", "Bağlantı"},
+                new int[]{14, 24, 20, 50, 40, 36, 7, 24, 12, 10, 18, 16, 60, 10, 18});
         for (RepoResult r : results) {
             for (CatchFinding c : r.catches) {
                 Row x = t.row();
@@ -386,9 +404,59 @@ public final class ExcelReportWriter {
                 text(x, 8, c.variable);
                 text(x, 9, c.emptyBody ? "Evet" : "Hayır");
                 text(x, 10, c.rethrows ? "Evet" : "Hayır");
-                text(x, 11, c.note());
-                text(x, 12, c.testCode ? "Evet" : "Hayır");
-                t.link(x, 13, c.link);
+                text(x, 11, c.swallowKind == null ? "" : c.swallowKind.name());
+                text(x, 12, c.note());
+                text(x, 13, c.testCode ? "Evet" : "Hayır");
+                t.link(x, 14, c.link);
+            }
+        }
+        t.finish();
+    }
+
+    // ------------------------------------------------------------------ Yutulan exception'lar
+
+    private boolean swallowedSheet() {
+        return cfg.reportSwallowed && cfg.collectSwallowed();
+    }
+
+    /** env.swallowed_exceptions tablosuna yazılan (db.enabled=true ise) kayıtların aynısı */
+    private void swallowed(Workbook wb, Styles st, List<RepoResult> results) {
+        Sheet s = wb.createSheet("Yutulan Exception'lar");
+        boolean db = cfg.db.enabled;
+        List<String> headers = new ArrayList<String>(Arrays.asList("Proje", "Repo", "Modül", "Dosya", "Sınıf",
+                "Metot", "Satır", "Yakalanan Tip", "Yutma Türü", "Not", "Test Kodu"));
+        List<Integer> widths = new ArrayList<Integer>(Arrays.asList(14, 24, 20, 50, 40, 36, 7, 30, 16, 50, 10));
+        if (db) {
+            headers.addAll(Arrays.asList("DB Sınıf Id", "DB Metot Id", "Eşleşme", "Eşleşme Notu"));
+            widths.addAll(Arrays.asList(12, 12, 18, 50));
+        }
+        headers.add("Bağlantı");
+        widths.add(18);
+        int[] w = new int[widths.size()];
+        for (int i = 0; i < w.length; i++) w[i] = widths.get(i);
+        Table t = new Table(s, st, 0, true, headers.toArray(new String[0]), w);
+        for (RepoResult r : results) {
+            for (CatchFinding f : r.swallowed) {
+                Row x = t.row();
+                int c = 0;
+                text(x, c++, f.projectKey);
+                text(x, c++, f.repo);
+                text(x, c++, f.module);
+                text(x, c++, f.file);
+                text(x, c++, f.className);
+                text(x, c++, f.member);
+                num(x, c++, f.line);
+                text(x, c++, f.caughtTypes);
+                text(x, c++, f.swallowKind.name());
+                text(x, c++, f.note());
+                text(x, c++, f.testCode ? "Evet" : "Hayır");
+                if (db) {
+                    if (f.dbClassId == null) text(x, c++, ""); else num(x, c++, f.dbClassId.longValue());
+                    if (f.dbMethodId == null) text(x, c++, ""); else num(x, c++, f.dbMethodId.longValue());
+                    text(x, c++, f.matchStatus);
+                    text(x, c++, f.matchNote);
+                }
+                t.link(x, c, f.link);
             }
         }
         t.finish();

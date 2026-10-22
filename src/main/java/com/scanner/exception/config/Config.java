@@ -57,6 +57,8 @@ public final class Config {
     public final List<UsagePattern> patterns;
     public final boolean throwOnly;
     public final boolean reportCatches;
+    /** Excel'de "Yutulan Exception'lar" sayfası (report.swallowed) */
+    public final boolean reportSwallowed;
     /** Veritabanına (db.swallowed.table) yazılacak hata yutan catch blokları: scan.swallowed.scope */
     public final SwallowedScope swallowedScope;
     /** Log nesnesi / log metodu sayılan adlar (scan.swallowed.log.names), büyük/küçük harf duyarsız */
@@ -290,6 +292,7 @@ public final class Config {
         patterns = UsagePattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
         reportCatches = Boolean.parseBoolean(get(p, "report.catch.blocks", "false"));
+        reportSwallowed = Boolean.parseBoolean(get(p, "report.swallowed", "true"));
         String scope = get(p, "scan.swallowed.scope", "TARGET").toUpperCase(Locale.ROOT);
         try {
             swallowedScope = SwallowedScope.valueOf(scope);
@@ -365,7 +368,7 @@ public final class Config {
                     + "boş ve komut satırında --class verilmedi. Ayar dosyasının doğru klasörde olduğunu "
                     + "ve exception.classes satırının dolu olduğunu kontrol edin. "
                     + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml, "
-                    + "sadece hata yutan catch blokları için --db ile scan.swallowed.scope=ALL)");
+                    + "sadece hata yutan catch blokları için scan.swallowed.scope=ALL)");
         }
         for (String c : exceptionClasses) {
             if (!c.contains(".")) {
@@ -400,13 +403,13 @@ public final class Config {
      * "PROJE/kalıp" sadece o projeyi daraltır; listede adı geçmeyen projelerin tüm repoları alınır.
      * Proje adı olmayan kalıp ("core-*") tüm projeleri daraltır. Yazımı exclude ile aynı.
      */
-    /** Hata yutan catch blokları sadece veritabanına yazıldığı için db kapalıyken aranmaz */
+    /** Hata yutan catch blokları veritabanına ve/veya Excel'e yazılır; ikisi de kapalıysa aranmaz */
     public boolean collectSwallowed() {
-        return db.enabled && swallowedScope != SwallowedScope.OFF;
+        return (db.enabled || reportSwallowed) && swallowedScope != SwallowedScope.OFF;
     }
 
     public boolean collectAllSwallowed() {
-        return db.enabled && swallowedScope == SwallowedScope.ALL;
+        return collectSwallowed() && swallowedScope == SwallowedScope.ALL;
     }
 
     public boolean isIncluded(RepoInfo r) {
