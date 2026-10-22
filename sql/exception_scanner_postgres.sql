@@ -51,8 +51,9 @@ CREATE TABLE env.exception_scan_run (
     repo_count         integer,
     java_file_count    integer,
     usage_count        integer,
+    empty_catch_count  integer,                        -- env.empty_catches'e yazılan boş catch bloğu sayısı
     exception_classes  text,
-    note               text,                           -- --db-note ile verilen açıklama
+    note               text,                           -- --db-note ile verilen açıklama, yoksa "<tarih> tarihli tarama"
     run_by             varchar(100),
     host               varchar(200),
     screen_count       integer,                        -- ebml.enabled=true ile yapılan taramalarda dolu
@@ -70,6 +71,7 @@ COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kayn
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
 COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
+COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.empty_catches tablosuna yazılan hata yutan (boş) catch bloğu sayısı; db.insert.unmatched=false ile atlananlar sayılmaz. env.empty_catches tablosu yoksa boş';
 COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse taramanın başladığı an "21.10.2026 11:50:34 tarihli tarama" biçiminde yazılır (saat dilimi db.note.zone, varsayılan Europe/Istanbul)';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';

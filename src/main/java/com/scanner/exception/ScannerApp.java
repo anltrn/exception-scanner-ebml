@@ -334,6 +334,10 @@ public final class ScannerApp {
                                     + "(sql/exception_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.emptyCatches + " boş catch bloğu " + cfg.db.emptyCatchTable + " tablosuna yazıldı"
                                     + (ir.emptyCatchesSkipped > 0 ? ", sınıfı bulunamayan " + ir.emptyCatchesSkipped + " atlandı" : "") + ".");
+                    if (ir.emptyCatches >= 0 && !ir.emptyCatchCountWritten) {
+                        log("Uyarı: " + cfg.db.runTable + " tablosunda empty_catch_count sütunu yok, boş catch sayısı tarama kaydına "
+                                + "yazılmadı (ALTER TABLE " + cfg.db.runTable + " ADD COLUMN empty_catch_count integer).");
+                    }
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0

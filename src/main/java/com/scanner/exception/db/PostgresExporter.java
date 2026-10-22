@@ -153,6 +153,8 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         /** env.empty_catches'e yazılan boş catch bloğu sayısı; tablo yoksa -1 */
         public int emptyCatches;
         public int emptyCatchesSkipped;
+        /** false: tarama tablosunda empty_catch_count sütunu yok, sayı yazılmadı */
+        public boolean emptyCatchCountWritten;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -222,14 +224,19 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             ir.errors = insertErrors(results, ir.runId);
             insertEmptyCatches(results, ir);
 
+            // Sütun sonradan eklendi: SQL dosyasının eski sürümüyle kurulan tabloda yoksa yazılmaz
+            boolean catchCount = ir.emptyCatches >= 0 && hasColumn(db.runTable, "empty_catch_count");
+            ir.emptyCatchCountWritten = catchCount;
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = clock_timestamp(), usage_count = ?"
+                    + (catchCount ? ", empty_catch_count = ?" : "")
                     + (cfg.ebml.enabled ? ", screen_count = ?, popup_count = ?, region_count = ?, report_count = ?,"
                     + " process_count = ?" : "")
                     + " WHERE id = ?");
             try {
                 int i = 1;
                 fin.setInt(i++, ir.inserted);
+                if (catchCount) fin.setInt(i++, ir.emptyCatches);
                 if (cfg.ebml.enabled) {
                     fin.setInt(i++, ir.screens);
                     fin.setInt(i++, ir.popups);
@@ -717,6 +724,24 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                 }
             }
             if (pending > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+    }
+
+    /** table: "sema.tablo" veya "tablo" (search_path'teki) */
+    private boolean hasColumn(String table, String column) throws SQLException {
+        PreparedStatement ps = con.prepareStatement("SELECT EXISTS (SELECT 1 FROM pg_attribute"
+                + " WHERE attrelid = to_regclass(?) AND attname = ? AND attnum > 0 AND NOT attisdropped)");
+        try {
+            ps.setString(1, table);
+            ps.setString(2, column);
+            ResultSet rs = ps.executeQuery();
+            try {
+                return rs.next() && rs.getBoolean(1);
+            } finally {
+                rs.close();
+            }
         } finally {
             ps.close();
         }
