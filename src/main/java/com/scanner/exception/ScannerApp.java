@@ -337,8 +337,8 @@ public final class ScannerApp {
                                     + cfg.db.swallowedTable + " tablosuna yazıldı"
                                     + (ir.swallowedSkipped > 0 ? ", sınıfı bulunamayan " + ir.swallowedSkipped + " atlandı" : "") + ".");
                     if (ir.swallowed >= 0 && !ir.swallowedCountWritten) {
-                        log("Uyarı: " + cfg.db.runTable + " tablosunda empty_catch_count sütunu yok, hata yutan catch sayısı tarama kaydına "
-                                + "yazılmadı (ALTER TABLE " + cfg.db.runTable + " ADD COLUMN empty_catch_count integer).");
+                        log("Uyarı: " + cfg.db.runTable + " tablosunda swallowed_error_count sütunu yok, hata yutan catch sayısı tarama kaydına "
+                                + "yazılmadı (ALTER TABLE " + cfg.db.runTable + " ADD COLUMN swallowed_error_count integer).");
                     }
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports

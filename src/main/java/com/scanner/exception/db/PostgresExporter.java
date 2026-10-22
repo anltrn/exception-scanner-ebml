@@ -155,7 +155,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int swallowedSkipped;
         /** catch_kind'e göre yazılan sayılar */
         public final Map<String, Integer> swallowedByKind = new java.util.TreeMap<String, Integer>();
-        /** false: tarama tablosunda empty_catch_count sütunu yok, sayı yazılmadı */
+        /** false: tarama tablosunda swallowed_error_count sütunu yok, sayı yazılmadı */
         public boolean swallowedCountWritten;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
@@ -227,11 +227,11 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             insertSwallowed(results, ir);
 
             // Sütun sonradan eklendi: SQL dosyasının eski sürümüyle kurulan tabloda yoksa yazılmaz
-            boolean catchCount = ir.swallowed >= 0 && hasColumn(db.runTable, "empty_catch_count");
+            boolean catchCount = ir.swallowed >= 0 && hasColumn(db.runTable, "swallowed_error_count");
             ir.swallowedCountWritten = catchCount;
             PreparedStatement fin = con.prepareStatement("UPDATE " + db.runTable
                     + " SET finished_at = clock_timestamp(), usage_count = ?"
-                    + (catchCount ? ", empty_catch_count = ?" : "")
+                    + (catchCount ? ", swallowed_error_count = ?" : "")
                     + (cfg.ebml.enabled ? ", screen_count = ?, popup_count = ?, region_count = ?, report_count = ?,"
                     + " process_count = ?" : "")
                     + " WHERE id = ?");

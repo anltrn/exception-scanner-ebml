@@ -51,7 +51,7 @@ CREATE TABLE env.exception_scan_run (
     repo_count         integer,
     java_file_count    integer,
     usage_count        integer,
-    empty_catch_count  integer,                        -- env.swallowed_exceptions'a yazılan hata yutan catch bloğu sayısı
+    swallowed_error_count integer,                       -- env.swallowed_exceptions'a yazılan hata yutan catch bloğu sayısı
     exception_classes  text,
     note               text,                           -- --db-note ile verilen açıklama, yoksa "<tarih> tarihli tarama"
     run_by             varchar(100),
@@ -71,7 +71,7 @@ COMMENT ON COLUMN env.exception_scan_run.source IS 'Repoların alındığı kayn
 COMMENT ON COLUMN env.exception_scan_run.repo_count IS 'Taramaya alınan repo sayısı: bitbucket.exclude.repos ile hariç tutulanlar sayılmaz, klonlanamayanlar (CLONE hatası) sayılır';
 COMMENT ON COLUMN env.exception_scan_run.java_file_count IS 'Repolarda bulunan .java dosyası sayısı (scan.max.file.kb sınırı nedeniyle atlananlar dahil); sınıf aranmadıysa (sadece envanter) 0';
 COMMENT ON COLUMN env.exception_scan_run.usage_count IS 'Bu taramada env.exception_usage tablosuna yazılan kullanım sayısı';
-COMMENT ON COLUMN env.exception_scan_run.empty_catch_count IS 'Bu taramada env.swallowed_exceptions tablosuna yazılan hata yutan catch bloğu sayısı (kapsamı scan.swallowed.scope); db.insert.unmatched=false ile atlananlar sayılmaz. env.swallowed_exceptions tablosu yoksa veya scan.swallowed.scope=OFF ise boş';
+COMMENT ON COLUMN env.exception_scan_run.swallowed_error_count IS 'Bu taramada env.swallowed_exceptions tablosuna yazılan hata yutan catch bloğu sayısı (kapsamı scan.swallowed.scope); db.insert.unmatched=false ile atlananlar sayılmaz. env.swallowed_exceptions tablosu yoksa veya scan.swallowed.scope=OFF ise boş';
 COMMENT ON COLUMN env.exception_scan_run.exception_classes IS 'Aranan exception sınıflarının tam adları (exception.classes), virgülle ayrılmış; sadece envanter çıkarıldıysa (sınıf aranmadıysa) boş metin';
 COMMENT ON COLUMN env.exception_scan_run.note IS '--db-note parametresi veya db.note ayarıyla verilen açıklama; verilmediyse taramanın başladığı an "21.10.2026 11:50:34 tarihli tarama" biçiminde yazılır (saat dilimi db.note.zone, varsayılan Europe/Istanbul)';
 COMMENT ON COLUMN env.exception_scan_run.run_by IS 'Taramayı çalıştıran işletim sistemi kullanıcısı';
@@ -520,7 +520,7 @@ COMMENT ON COLUMN env.swallowed_exceptions.line_no IS 'Catch bloğunun (catch an
 COMMENT ON COLUMN env.swallowed_exceptions.class_fqcn IS 'Catch bloğunun kodda bulunduğu sınıfın paketle birlikte tam adı; iç sınıflar nokta ile, anonim sınıflar <anonim Tip> olarak yazılır (ör. a.b.Dis.Ic.<anonim Runnable>). Envanterle kalıcı eşleştirme bu sütunla yapılmalı';
 COMMENT ON COLUMN env.swallowed_exceptions.method_signature IS 'Catch bloğunun kodda bulunduğu üye: metot imzası (ör. getRate(String, String)), constructor için "Ad(String) [constructor]", bloklarda <static blok> / <instance blok>, alan tanımında <alan: ad>; üye yoksa boş';
 COMMENT ON COLUMN env.swallowed_exceptions.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.swallowed.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
-COMMENT ON COLUMN env.swallowed_exceptions.catch_kind IS 'Hatanın nasıl yutulduğu: EMPTY (gövde boş veya sadece yorum), LOG_ONLY (gövdede sadece log çağrıları var, ör. log.error("x", e) veya e.printStackTrace()), LOG_AND_RETURN (log çağrılarından sonra return, ör. log.error(...); return null;). Log çağrısı sayılanlar: printStackTrace, System.out/err, adı scan.swallowed.log.names''te olan (varsayılan log, logger) veya logger ile biten nesnelerin metotları, getLogger()/getLog() sonucunun metotları, log ile başlayan nesnesiz çağrılar (logError(e)) ve sadece log içeren if blokları';
+COMMENT ON COLUMN env.swallowed_exceptions.catch_kind IS 'Hatanın nasıl yutulduğu: EMPTY (gövde boş veya sadece yorum), LOG_ONLY (gövdede sadece log çağrıları var, ör. log.error("x", e) veya e.printStackTrace()), LOG_AND_RETURN (log çağrılarından sonra return; dönen değer ne olursa olsun, ör. return null, return "", return false, return new Sonuc(), return;). Log çağrısı sayılanlar: printStackTrace, System.out/err, adı scan.swallowed.log.names''te olan (varsayılan log, logger) veya logger ile biten nesnelerin metotları, getLogger()/getLog() sonucunun metotları, log ile başlayan nesnesiz çağrılar (logError(e)) ve sadece log içeren if blokları';
 COMMENT ON COLUMN env.swallowed_exceptions.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
 COMMENT ON COLUMN env.swallowed_exceptions.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
