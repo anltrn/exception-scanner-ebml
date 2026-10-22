@@ -286,7 +286,7 @@ public final class ScannerApp {
         summary.put("scanSeconds", scanTotal / 1000);
 
         // Veritabanı eşleştirmesi raporlardan önce yapılır ki Excel'de de class_id / method_id görünsün
-        PostgresExporter pg = cfg.db.enabled ? resolveInDatabase(cfg, results) : null;
+        boolean resolved = cfg.db.enabled && resolveInDatabase(cfg, results);
 
         Date now = new Date();
         ExcelReportWriter writer = new ExcelReportWriter(cfg, now);
@@ -316,8 +316,10 @@ public final class ScannerApp {
         printFindings(results, cfg.consoleLimit);
         log("Detaylı Excel raporu: " + master.toAbsolutePath() + "  (detaylar 'Kullanımlar' sayfasında)");
 
-        if (pg != null) {
-            try {
+        // Raporlar yazılırken bağlantı açık tutulmaz (eşleştirme ve kayıt ayrı bağlantılarla yapılır):
+        // açık kalan okuma transaction'ı env.java_class gibi tablolardaki TRUNCATE'leri bekletirdi.
+        if (resolved) {
+            try (PostgresExporter pg = new PostgresExporter(cfg)) {
                 if (cfg.db.dryRun) {
                     log("Veritabanı: deneme modu (--db-dry-run), kayıt yapılmadı.");
                 } else {
@@ -349,8 +351,6 @@ public final class ScannerApp {
                 }
             } catch (Exception e) {
                 log("HATA: kullanımlar veritabanına yazılamadı, hiçbir kayıt eklenmedi: " + e.getMessage());
-            } finally {
-                pg.close();
             }
         }
 
@@ -388,16 +388,15 @@ public final class ScannerApp {
 
     /**
      * Kullanımları PostgreSQL'deki sınıf ve metot kayıtlarıyla eşleştirir. Bağlantı kurulamazsa
-     * tarama boşa gitmesin diye raporlar yine yazılır; sadece veritabanı adımı atlanır.
+     * tarama boşa gitmesin diye raporlar yine yazılır; sadece veritabanı adımı atlanır (false döner).
+     * Bağlantı eşleştirme bitince kapatılır.
      */
-    private static PostgresExporter resolveInDatabase(Config cfg, List<RepoResult> results) {
+    private static boolean resolveInDatabase(Config cfg, List<RepoResult> results) {
         List<UsageFinding> all = new ArrayList<UsageFinding>();
         for (RepoResult r : results) all.addAll(r.usages);
         List<CatchFinding> swallowed = new ArrayList<CatchFinding>();
         for (RepoResult r : results) swallowed.addAll(r.swallowed);
-        PostgresExporter pg = null;
-        try {
-            pg = new PostgresExporter(cfg);
+        try (PostgresExporter pg = new PostgresExporter(cfg)) {
             List<com.scanner.exception.model.Located> toResolve = new ArrayList<com.scanner.exception.model.Located>(all);
             toResolve.addAll(swallowed);
             new DbMatcher(cfg.db.caseInsensitive, cfg.db.constructorNames).resolveAll(toResolve, pg);
@@ -420,10 +419,9 @@ public final class ScannerApp {
                 counts.put(u.matchStatus, c == null ? 1 : c + 1);
             }
             log("Veritabanı eşleştirmesi: " + (counts.isEmpty() ? "eşleştirilecek kullanım yok" : counts.toString()));
-            return pg;
+            return true;
         } catch (Exception e) {
             log("HATA: veritabanı eşleştirmesi yapılamadı, raporlar eşleştirmesiz yazılacak: " + e.getMessage());
-            if (pg != null) pg.close();
             for (UsageFinding u : all) {
                 u.matchStatus = "";
                 u.dbClassId = null;
@@ -440,7 +438,7 @@ public final class ScannerApp {
                     ef.projectMatch = "";
                 }
             }
-            return null;
+            return false;
         }
     }
 
