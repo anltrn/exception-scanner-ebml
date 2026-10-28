@@ -223,7 +223,7 @@ Her çalıştırma yeni bir `scan_run` kaydı açar ve kullanımları ona bağla
 
 **Sınıf:** Kullanımın bulunduğu sınıfın FQCN'i `fqcn` sütununda aranır. İç içe sınıflar için hem `a.b.Dis$Ic` hem `a.b.Dis.Ic` denenir; bulunamazsa dıştaki sınıfa kadar kısaltılır. Anonim sınıf içindeki kullanımlar, onu içeren sınıfa ve o sınıftaki metoda eşlenir.
 
-**Metot:** Tablodaki ad `(` karakterine kadar kesilerek karşılaştırılır; niteleyici ve dönüş tipi de atılır. Bu yüzden `getRate`, `getRate(String a, String b)`, yarım kalmış `getRate(String a,` ve `public static CSBag getRate(CSBag inBag)` aynı metot sayılır. Aynı adda birden fazla metot (overload) varsa, addaki veya `db.method.signature.column` sütunundaki parametrelerle ayırt edilir; JVM biçimli imzalar (`(Ljava/lang/String;I)V`) da okunur. Constructor'lar `<init>` veya sınıf adıyla, static bloklar `<clinit>` ile aranır.
+**Metot:** Tablodaki ad `(` karakterine kadar kesilerek karşılaştırılır; niteleyici ve dönüş tipi de atılır. Bu yüzden `getRate`, `getRate(String a, String b)`, yarım kalmış `getRate(String a,` ve `public static CSBag getRate(CSBag inBag)` aynı metot sayılır. Aynı adda birden fazla metot (overload) varsa, addaki veya `db.method.signature.column` sütunundaki parametrelerle ayırt edilir; JVM biçimli imzalar (`(Ljava/lang/String;I)V`) da okunur. Parametreleri aynı birden fazla kayıt varsa (ör. derleyicinin ürettiği bridge metotlar: `String getAd()` ve `Object getAd()`), imzada veya addaki dönüş tipiyle seçilir; `(…)Ljava/lang/String;`, `public String getAd()` ve `getAd() : String` biçimleri okunur. Constructor'lar `<init>` veya sınıf adıyla, static bloklar `<clinit>` ile aranır.
 
 **Sonuç** `match_status` sütununa yazılır:
 
