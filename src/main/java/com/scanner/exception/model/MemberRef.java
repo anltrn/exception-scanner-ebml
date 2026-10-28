@@ -20,17 +20,10 @@ public final class MemberRef {
     public final String name;
     /** Parametre tipleri, kodda yazıldığı gibi: ["String", "List<Long>", "int[]"] */
     public final List<String> paramTypes;
-    /** Metodun dönüş tipi, kodda yazıldığı gibi; metot dışındakiler için null */
-    public final String returnType;
 
     public MemberRef(Kind kind, String name, List<String> paramTypes) {
-        this(kind, name, paramTypes, null);
-    }
-
-    public MemberRef(Kind kind, String name, List<String> paramTypes, String returnType) {
         this.kind = kind;
         this.name = name == null ? "" : name;
         this.paramTypes = Collections.unmodifiableList(new ArrayList<String>(paramTypes));
-        this.returnType = returnType;
     }
 }

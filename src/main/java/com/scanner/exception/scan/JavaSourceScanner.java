@@ -526,8 +526,7 @@ public final class JavaSourceScanner {
         while (cur != null && !(cur instanceof TypeDeclaration)) {
             if (cur instanceof MethodDeclaration) {
                 MethodDeclaration md = (MethodDeclaration) cur;
-                found = new MemberRef(MemberRef.Kind.METHOD, md.getNameAsString(), paramTypes(md.getParameters()),
-                        md.getType().asString());
+                found = new MemberRef(MemberRef.Kind.METHOD, md.getNameAsString(), paramTypes(md.getParameters()));
             } else if (cur instanceof ConstructorDeclaration) {
                 ConstructorDeclaration cd = (ConstructorDeclaration) cur;
                 found = new MemberRef(MemberRef.Kind.CONSTRUCTOR, cd.getNameAsString(), paramTypes(cd.getParameters()));

@@ -24,9 +24,7 @@ import java.util.regex.Pattern;
  * Metot: tablodaki ad "(" karakterinden kesilerek karşılaştırılır; böylece "getRate" ile
  *        "getRate(String a, String b)" ve yarım kalmış "getRate(String a," aynı metot sayılır.
  *        Aynı adda birden fazla metot (overload) varsa parametre tipleriyle, o da yetmezse
- *        parametre sayısıyla ayırt edilir. Parametreleri aynı birden fazla kayıt varsa (ör. derleyicinin
- *        ürettiği bridge metotlar: "String getAd()" ve "Object getAd()") tabloda dönüş tipi varsa
- *        onunla seçilir.
+ *        parametre sayısıyla ayırt edilir.
  */
 public final class DbMatcher {
 
@@ -252,19 +250,8 @@ public final class DbMatcher {
             if (exact.size() == 1) {
                 return new MethodResult(MATCHED, exact.get(0), byName.size() + " overload içinden parametre tipleriyle seçildi");
             }
-            List<DbCatalog.MethodRow> exactReturn = sameReturnType(exact, ref.returnType);
-            if (exactReturn.size() == 1) {
-                return new MethodResult(MATCHED, exactReturn.get(0), byName.size()
-                        + " overload içinden parametre ve dönüş tipiyle seçildi");
-            }
             if (exact.isEmpty() && sameCount.size() == 1) {
                 return new MethodResult(MATCHED, sameCount.get(0), byName.size() + " overload içinden parametre sayısıyla seçildi");
-            }
-            List<DbCatalog.MethodRow> countReturn = exact.isEmpty()
-                    ? sameReturnType(sameCount, ref.returnType) : Collections.<DbCatalog.MethodRow>emptyList();
-            if (countReturn.size() == 1) {
-                return new MethodResult(MATCHED, countReturn.get(0), byName.size()
-                        + " overload içinden parametre sayısı ve dönüş tipiyle seçildi");
             }
             if (exact.size() > 1) {
                 return new MethodResult(METHOD_AMBIGUOUS, exact.get(0), exact.size() + " kayıt aynı imzada, en küçük id seçildi");
@@ -277,60 +264,6 @@ public final class DbMatcher {
         return new MethodResult(METHOD_AMBIGUOUS, byName.get(0), byName.size()
                 + " aday ayırt edilemedi, en küçük id seçildi");
     }
-
-    /** Dönüş tipi kaynaktakiyle aynı olan kayıtlar; dönüş tipi bilinmeyenler elenir */
-    private static List<DbCatalog.MethodRow> sameReturnType(List<DbCatalog.MethodRow> rows, String own) {
-        List<DbCatalog.MethodRow> out = new ArrayList<DbCatalog.MethodRow>();
-        if (own == null || rows.size() < 2) return out;
-        String wanted = normalize(own);
-        for (DbCatalog.MethodRow m : rows) {
-            if (wanted.equals(dbReturnType(m))) out.add(m);
-        }
-        return out;
-    }
-
-    /** Dönüş tipini önce imza sütunundan, yoksa addan okur; bilgi yoksa null */
-    static String dbReturnType(DbCatalog.MethodRow m) {
-        String r = parseReturnType(m.signature);
-        return r != null ? r : parseReturnType(m.name);
-    }
-
-    /**
-     * "(Ljava/lang/String;)Ljava/lang/Object;" -> Object; "public String getAd()" -> String;
-     * "getAd() : String" -> String; "getAd()" veya "getAd(String a)" -> null
-     */
-    static String parseReturnType(String text) {
-        if (text == null) return null;
-        String t = text.trim();
-        int open = t.indexOf('(');
-        if (open < 0) return null;
-        String rest = t.substring(open);
-        String ret = rest.substring(rest.indexOf(')') + 1);
-        if (!ret.isEmpty() && DESCRIPTOR.matcher(rest).matches() && !rest.contains(" ") && !rest.contains(",")) {
-            if (ret.equals("V")) return "void";
-            List<String> types = parseDescriptor("(" + ret + ")");
-            if (types.size() == 1) return types.get(0);
-        }
-        int close = rest.lastIndexOf(')');
-        if (close >= 0) {
-            String after = rest.substring(close + 1).trim();
-            if (after.startsWith(":")) {
-                after = after.substring(1).trim();
-                return after.isEmpty() ? null : normalize(after);
-            }
-        }
-        // "public static <T> List<T> listele" -> List
-        String head = collapseGenerics(ANNOTATION.matcher(t.substring(0, open)).replaceAll(" ").trim());
-        String[] tokens = head.split("\\s+");
-        if (tokens.length < 2) return null;
-        String type = tokens[tokens.length - 2];
-        if (MODIFIERS.contains(type) || type.startsWith("<")) return null;
-        return normalize(type);
-    }
-
-    private static final Set<String> MODIFIERS = new java.util.HashSet<String>(Arrays.asList(
-            "public", "protected", "private", "static", "final", "abstract", "synchronized",
-            "native", "strictfp", "default", "transient", "volatile"));
 
     /** "public static String getRate(String a," -> getRate */
     static String baseName(String dbName) {
