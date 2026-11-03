@@ -368,16 +368,9 @@ GET /api/reports/excel?project=A&repo=A3&scanRunId=42   → belirli bir tarama (
 GET /api/reports/repos?project=A                        → ekranda listelemek için repolar ve sayıları
 ```
 
-Excel'in biçimi tarama sonundaki raporla aynıdır (Kullanımlar, Özet, Mesajlar, Yutulan Exception'lar, Alt Sınıflar, Tarama Hataları). Farklar: EBML sayfası yoktur; `db.insert.unmatched=false` ile atlanan kayıtlar raporda da yoktur.
+Excel'in biçimi tarama sonundaki raporla aynıdır (Kullanımlar, Özet, Mesajlar, Yutulan Exception'lar, Alt Sınıflar, Tarama Hataları). Farklar: EBML sayfası yoktur; tabloda tutulmadığı için Kullanımlar'daki "Mesaj Tipi" ve Yutulan Exception'lar'daki "Modül" sütunları boştur (modül dosya yolunun başında görünür); `db.insert.unmatched=false` ile atlanan kayıtlar raporda da yoktur.
 
-Gerekenler: `env.exception_scan_repo` ve `env.custom_exception_classes` tabloları, `env.exception_usage.message_kind` (Mesajlar sayfası için) ve `env.swallowed_exceptions.module` sütunları. Mevcut veritabanında bunları SQL dosyasındaki ilgili `CREATE TABLE` blokları ve şu komutlarla ekleyin:
-
-```sql
-ALTER TABLE env.exception_usage ADD COLUMN message_kind varchar(30);
-ALTER TABLE env.swallowed_exceptions ADD COLUMN module varchar(300);
-```
-
-Sütunlar yoksa tarama yine yazılır; raporda Mesajlar sayfası ve yutulan exception'ların modülü boş kalır. Tablolar eklenmeden önce yapılmış taramaların raporu alınamaz.
+Gerekenler: `env.exception_scan_repo` ve `env.custom_exception_classes` tabloları. Mevcut veritabanında SQL dosyasının sonundaki iki `CREATE TABLE` bloğuyla ekleyin. Tablolar yoksa tarama yine yazılır, logda uyarı verilir; bu tablolar eklenmeden önce yapılmış taramaların raporu alınamaz.
 
 ### Günlük otomatik tarama
 

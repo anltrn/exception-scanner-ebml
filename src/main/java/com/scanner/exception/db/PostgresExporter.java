@@ -162,8 +162,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int repos;
         /** env.custom_exception_classes'a yazılan sınıf sayısı; tablo yoksa -1 */
         public int customExceptions;
-        /** false: kullanım tablosunda message_kind sütunu yok, mesaj tipi yazılmadı */
-        public boolean messageKindWritten;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -179,14 +177,10 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             InsertResult ir = new InsertResult();
             ir.runId = insertRun(results, startedAt);
 
-            // Sütun sonradan eklendi: rapor API'sinin "Mesajlar" sayfası için gerekir
-            boolean messageKind = hasColumn(db.usageTable, "message_kind");
-            ir.messageKindWritten = messageKind;
             String sql = "INSERT INTO " + db.usageTable + " (scan_run_id, class_id, method_id, usage_type_code,"
                     + " match_status, match_note, project_key, repo, module, file_path, line_no, class_fqcn,"
                     + " method_signature, exception_class, error_code, message, usage_context, is_test,"
-                    + " code_snippet, link" + (messageKind ? ", message_kind" : "")
-                    + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (messageKind ? ",?" : "") + ")";
+                    + " code_snippet, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
             PreparedStatement ps = con.prepareStatement(sql);
             try {
                 int pending = 0;
@@ -219,7 +213,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                         ps.setBoolean(i++, u.testCode);
                         ps.setString(i++, u.expression);
                         ps.setString(i++, cut(u.link, 2000));
-                        if (messageKind) ps.setString(i++, u.messageKind == null ? null : u.messageKind.name());
                         ps.addBatch();
                         ir.inserted++;
                         if (++pending >= BATCH) {
@@ -705,12 +698,9 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             ir.swallowed = -1;
             return;
         }
-        // Sütun sonradan eklendi: rapor API'sinin "Yutulan Exception'lar" sayfasındaki modül için
-        boolean module = hasColumn(db.swallowedTable, "module");
         PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.swallowedTable
                 + " (scan_run_id, class_id, method_id, match_status, match_note, project_key, repo, file_path, line_no,"
-                + " class_fqcn, method_signature, exception_class, catch_kind, link" + (module ? ", module" : "")
-                + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (module ? ",?" : "") + ")");
+                + " class_fqcn, method_signature, exception_class, catch_kind, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         try {
             int pending = 0;
             for (RepoResult r : results) {
@@ -734,7 +724,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                     ps.setString(i++, cut(c.caughtTypes, 300));
                     ps.setString(i++, c.swallowKind.name());
                     ps.setString(i++, cut(c.link, 2000));
-                    if (module) ps.setString(i++, cut(c.module, 300));
                     ir.swallowedByKind.merge(c.swallowKind.name(), 1, Integer::sum);
                     ps.addBatch();
                     ir.swallowed++;

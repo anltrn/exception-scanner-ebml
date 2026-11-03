@@ -8,7 +8,6 @@ import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
 import com.scanner.exception.model.SubclassFinding;
 import com.scanner.exception.model.UsageFinding;
-import com.scanner.exception.scan.ArgumentClassifier.ArgKind;
 import com.scanner.exception.scan.JavaSourceScanner;
 
 import java.sql.Connection;
@@ -25,7 +24,9 @@ import java.util.NoSuchElementException;
 
 /**
  * Bir taramanın proje veya repo bazlı sonuçlarını veritabanından okur; Excel raporu tarama bittikten sonra
- * istendiğinde bu sonuçlardan üretilir. Repolar env.exception_scan_repo'dan, bulgular kullanım, hata yutan catch,
+ * istendiğinde bu sonuçlardan üretilir. Tabloda tutulmayan iki bilgi raporda boş kalır: kullanımların mesaj
+ * tipi ("Mesaj Tipi" sütunu) ve hata yutan catch bloklarının modülü.
+ * Repolar env.exception_scan_repo'dan, bulgular kullanım, hata yutan catch,
  * tarama hatası ve türeyen sınıf tablolarından okunur.
  */
 public final class DbReportReader {
@@ -189,11 +190,10 @@ public final class DbReportReader {
 
     private void readUsages(Connection con, String project, String repo, long runId, Map<String, RepoResult> byRepo)
             throws SQLException {
-        boolean messageKind = hasColumn(con, db.usageTable, "message_kind");
         String sql = "SELECT u.project_key, u.repo, u.module, u.file_path, u.line_no, u.class_fqcn, u.method_signature,"
                 + " u.exception_class, u.usage_type_code, t.type_name, t.action, u.error_code, u.message,"
                 + " u.usage_context, u.is_test, u.code_snippet, u.link, u.class_id, u.method_id, u.match_status,"
-                + " u.match_note" + (messageKind ? ", u.message_kind" : "")
+                + " u.match_note"
                 + " FROM " + db.usageTable + " u LEFT JOIN " + db.typeTable + " t ON t.type_code = u.usage_type_code"
                 + where("u.", repo)
                 + " ORDER BY u.repo, u.file_path, u.line_no";
@@ -216,7 +216,6 @@ public final class DbReportReader {
                 u.expression = nz(rs.getString(16));
                 u.link = rs.getString(17);
                 match(u, rs, 18);
-                if (messageKind) u.messageKind = argKind(rs.getString(22));
                 r.usages.add(u);
             }
         }
@@ -225,17 +224,15 @@ public final class DbReportReader {
     private void readSwallowed(Connection con, String project, String repo, long runId, Map<String, RepoResult> byRepo)
             throws SQLException {
         if (!exists(con, db.swallowedTable)) return;
-        boolean module = hasColumn(con, db.swallowedTable, "module");
         String sql = "SELECT project_key, repo, file_path, line_no, class_fqcn, method_signature, exception_class,"
-                + " catch_kind, link, class_id, method_id, match_status, match_note" + (module ? ", module" : "")
+                + " catch_kind, link, class_id, method_id, match_status, match_note"
                 + " FROM " + db.swallowedTable + where(repo) + " ORDER BY repo, file_path, line_no";
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 RepoResult r = byRepo.get(key(rs.getString(1), rs.getString(2)));
                 if (r == null) continue;
                 CatchFinding c = new CatchFinding();
-                location(c, r, module ? rs.getString(14) : "", rs.getString(3), rs.getInt(4), rs.getString(5),
-                        rs.getString(6));
+                location(c, r, "", rs.getString(3), rs.getInt(4), rs.getString(5), rs.getString(6));
                 c.testCode = JavaSourceScanner.isTestPath(c.file);
                 c.caughtTypes = nz(rs.getString(7));
                 c.swallowKind = CatchFinding.SwallowKind.valueOf(rs.getString(8));
@@ -335,13 +332,6 @@ public final class DbReportReader {
         }
     }
 
-    private static ArgKind argKind(String s) {
-        try {
-            return s == null ? null : ArgKind.valueOf(s);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-    }
 
     private static Integer integer(ResultSet rs, int col) throws SQLException {
         int v = rs.getInt(col);
@@ -366,14 +356,4 @@ public final class DbReportReader {
         }
     }
 
-    private static boolean hasColumn(Connection con, String table, String column) throws SQLException {
-        try (PreparedStatement ps = con.prepareStatement("SELECT EXISTS (SELECT 1 FROM pg_attribute"
-                + " WHERE attrelid = to_regclass(?) AND attname = ? AND attnum > 0 AND NOT attisdropped)")) {
-            ps.setString(1, table);
-            ps.setString(2, column);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() && rs.getBoolean(1);
-            }
-        }
-    }
 }

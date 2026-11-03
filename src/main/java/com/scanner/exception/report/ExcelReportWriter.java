@@ -304,7 +304,8 @@ public final class ExcelReportWriter {
         Map<String, MsgGroup> groups = new LinkedHashMap<String, MsgGroup>();
         for (RepoResult r : results) {
             for (UsageFinding u : r.usages) {
-                if (u.messageKind == null || !u.messageKind.hasMessage || u.message.trim().isEmpty()) continue;
+                // message sadece metni kodda yazılı mesajlarda (sabit, birleştirme, format) doludur
+                if (u.message.trim().isEmpty()) continue;
                 String key = normalize(u.message);
                 MsgGroup g = groups.get(key);
                 if (g == null) {

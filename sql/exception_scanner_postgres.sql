@@ -121,7 +121,6 @@ CREATE TABLE env.exception_usage (
     is_test          boolean      NOT NULL DEFAULT false,
     code_snippet     text,
     link             varchar(2000),
-    message_kind     varchar(30),                      -- STRING_LITERAL | STRING_CONCAT | STRING_FORMAT | EXCEPTION_MESSAGE
     created_at       timestamptz  NOT NULL DEFAULT now(),
 
     CONSTRAINT ck_exception_usage_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
@@ -149,7 +148,6 @@ COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: 
 COMMENT ON COLUMN env.exception_usage.is_test IS 'Dosya test kodunda mı: yolunda src/test, test veya tests klasörü varsa true';
 COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
 COMMENT ON COLUMN env.exception_usage.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
-COMMENT ON COLUMN env.exception_usage.message_kind IS 'message sütunundaki metnin koddaki şekli: STRING_LITERAL (String sabit), STRING_CONCAT (String birleştirme), STRING_FORMAT (String.format / MessageFormat), EXCEPTION_MESSAGE (başka exception''ın getMessage()''ı); mesaj argümanı yoksa boş. Rapor API''sinin Mesajlar sayfası bu sütunu kullanır';
 COMMENT ON COLUMN env.exception_usage.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
 CREATE INDEX ix_exception_usage_run    ON env.exception_usage (scan_run_id);
@@ -503,7 +501,6 @@ CREATE TABLE env.swallowed_exceptions (
     exception_class  varchar(300),                     -- yakalanan exception: CSException (multi-catch'te A | B)
     catch_kind       varchar(20)  NOT NULL,            -- EMPTY | LOG_ONLY | LOG_AND_RETURN | RETURN_ONLY
     link             varchar(2000),
-    module           varchar(300),
     created_at       timestamptz  NOT NULL DEFAULT now(),
 
     CONSTRAINT ck_swallowed_exceptions_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
@@ -525,7 +522,6 @@ COMMENT ON COLUMN env.swallowed_exceptions.method_signature IS 'Catch bloğunun 
 COMMENT ON COLUMN env.swallowed_exceptions.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.swallowed.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
 COMMENT ON COLUMN env.swallowed_exceptions.catch_kind IS 'Hatanın nasıl yutulduğu: EMPTY (gövde boş veya sadece yorum), LOG_ONLY (gövdede sadece log çağrıları var, ör. log.error("x", e) veya e.printStackTrace()), LOG_AND_RETURN (log çağrılarından sonra return, ör. log.error(...); return null;), RETURN_ONLY (log olmadan sadece return, ör. return null, return false, return "", return EMPTY, return;). İki return türünde de dönen değer hatayı çağırana taşıyorsa kayıt yazılmaz: yakalanan değişken (adı ne olursa olsun: e, ex, t) ifadede geçiyorsa (return handle(ex), return new HataCevabi(ex.getMessage())), adı Exception/Error/Throwable ile biten bir tip oluşturuluyorsa (return new BusinessException("x")) veya catch''in bulunduğu metodun dönüş tipi böyleyse. Log çağrısı sayılanlar: printStackTrace, System.out/err, adı scan.swallowed.log.names''te olan (varsayılan log, logger) veya logger ile biten nesnelerin metotları, getLogger()/getLog() sonucunun metotları, log ile başlayan nesnesiz çağrılar (logError(e)) ve sadece log içeren if blokları';
 COMMENT ON COLUMN env.swallowed_exceptions.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
-COMMENT ON COLUMN env.swallowed_exceptions.module IS 'Catch bloğunun bulunduğu modül (Maven/Gradle modül klasörü); tek modüllü projelerde (kök)';
 COMMENT ON COLUMN env.swallowed_exceptions.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
 CREATE INDEX ix_swallowed_exceptions_run ON env.swallowed_exceptions (scan_run_id);

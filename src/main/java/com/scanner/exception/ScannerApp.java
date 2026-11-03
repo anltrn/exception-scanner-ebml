@@ -366,10 +366,6 @@ public final class ScannerApp {
                         log("Veritabanı: " + ir.customExceptions + " türeyen exception sınıfı " + cfg.db.customExceptionTable
                                 + " tablosuna yazıldı.");
                     }
-                    if (!ir.messageKindWritten) {
-                        log("Uyarı: " + cfg.db.usageTable + " tablosunda message_kind sütunu yok, rapor API'sinin Mesajlar "
-                                + "sayfası boş kalır (ALTER TABLE " + cfg.db.usageTable + " ADD COLUMN message_kind varchar(30)).");
-                    }
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0
