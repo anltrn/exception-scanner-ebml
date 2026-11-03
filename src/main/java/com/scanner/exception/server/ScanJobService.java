@@ -235,20 +235,23 @@ class ScanJobService {
     record GeneratedReport(String fileName, byte[] content) { }
 
     /**
-     * Proje veya repo bazlı Excel raporunu veritabanındaki tarama sonuçlarından üretir.
-     * scanRunId verilmezse projenin (repo verildiyse o reponun başarıyla tarandığı) en son taraması kullanılır.
+     * Excel raporunu veritabanındaki tarama sonuçlarından üretir: project boşsa taramanın tamamı, repo boşsa
+     * projenin tüm repoları. scanRunId verilmezse en son tarama (repo verildiyse o reponun başarıyla tarandığı).
      */
     GeneratedReport dbReport(String project, String repo, Long scanRunId) throws IOException, java.sql.SQLException {
         Config cfg = dbConfig();
         com.scanner.exception.db.DbReportReader.Report report =
                 new com.scanner.exception.db.DbReportReader(cfg).read(project, repo, scanRunId);
-        boolean oneRepo = repo != null && !repo.isEmpty();
-        String scope = oneRepo ? report.results.get(0).repo.id() : report.results.get(0).repo.projectKey;
-        String fileName = "report_" + com.scanner.exception.repo.GitRunner.safe(scope.replace('/', '_'))
+        boolean allProjects = project == null || project.trim().isEmpty();
+        boolean oneRepo = !allProjects && repo != null && !repo.trim().isEmpty();
+        String scope = allProjects ? "Tüm projeler"
+                : oneRepo ? report.results.get(0).repo.id() : report.results.get(0).repo.projectKey;
+        String fileName = (allProjects ? "exception_scan_report"
+                : "report_" + com.scanner.exception.repo.GitRunner.safe(scope.replace('/', '_')))
                 + "_" + report.scanRunId + ".xlsx";
         Path tmp = Files.createTempFile("scan-report-", ".xlsx");
         try {
-            new com.scanner.exception.report.ExcelReportWriter(cfg, java.util.Date.from(report.startedAt), false)
+            new com.scanner.exception.report.ExcelReportWriter(cfg, java.util.Date.from(report.startedAt), true)
                     .write(tmp, "Exception Kullanım Taraması - " + scope + " (scan_run_id=" + report.scanRunId + ")",
                             report.results);
             return new GeneratedReport(fileName, Files.readAllBytes(tmp));

@@ -6,7 +6,6 @@ import com.scanner.exception.model.Located;
 import com.scanner.exception.model.RepoInfo;
 import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
-import com.scanner.exception.model.SubclassFinding;
 import com.scanner.exception.model.UsageFinding;
 import com.scanner.exception.scan.JavaSourceScanner;
 
@@ -26,8 +25,9 @@ import java.util.NoSuchElementException;
  * Bir taramanın proje veya repo bazlı sonuçlarını veritabanından okur; Excel raporu tarama bittikten sonra
  * istendiğinde bu sonuçlardan üretilir. Tabloda tutulmayan iki bilgi raporda boş kalır: kullanımların mesaj
  * tipi ("Mesaj Tipi" sütunu) ve hata yutan catch bloklarının modülü.
- * Repolar env.exception_scan_repo'dan, bulgular kullanım, hata yutan catch,
- * tarama hatası ve türeyen sınıf tablolarından okunur.
+ * Repolar env.exception_scan_repo'dan, bulgular kullanım, hata yutan catch
+ * ve tarama hatası tablolarından okunur. Türeyen exception sınıflarının sadece sayısı tutulur
+ * (custom_exception_class_count); "Alt Sınıflar" ve EBML sayfaları bu raporda yoktur.
  */
 public final class DbReportReader {
 
@@ -62,10 +62,17 @@ public final class DbReportReader {
     }
 
     /**
-     * @param scanRunId null ise projenin (repo verildiyse o reponun) başarıyla tarandığı en son tarama
-     * @param repo      null veya boşsa projenin tüm repoları
+     * @param project   null veya boşsa taramadaki tüm projeler
+     * @param repo      null veya boşsa projenin tüm repoları; verilirse project de verilmeli
+     * @param scanRunId null ise en son tarama: projenin (repo verildiyse o reponun başarıyla tarandığı)
+     *                  veya proje de verilmediyse veritabanındaki en son tarama
      */
     public Report read(String project, String repo, Long scanRunId) throws SQLException {
+        project = blankToNull(project);
+        repo = blankToNull(repo);
+        if (repo != null && project == null) {
+            throw new IllegalArgumentException("repo verildiğinde project de verilmeli (ör. project=A&repo=A3)");
+        }
         try (Connection con = PostgresExporter.connect(db)) {
             con.setReadOnly(true);
             long runId = scanRunId != null ? scanRunId : latestRun(con, project, repo);
@@ -79,26 +86,25 @@ public final class DbReportReader {
                 info.branch = nz(r.branch);
                 info.commit = nz(r.commitId);
                 RepoResult rr = new RepoResult(info);
+                rr.subclassCount = r.customExceptionClassCount == null ? Integer.valueOf(0) : r.customExceptionClassCount;
                 byRepo.put(key(r.projectKey, r.repo), rr);
             }
             if (byRepo.isEmpty()) {
-                throw new NoSuchElementException(scanRunId == null && repo != null && !repo.isEmpty()
-                        ? "Bu repo taranmış görünmüyor: " + project + "/" + repo
-                        : "scan_run_id=" + runId + " taramasında bu proje / repo yok: " + project
-                        + (repo == null || repo.isEmpty() ? "" : "/" + repo));
+                throw new NoSuchElementException("scan_run_id=" + runId + " taramasında "
+                        + (project == null ? "taranan repo kaydı yok" : "bu proje / repo yok: " + scope(project, repo)));
             }
             readCounts(con, project, repo, runId, byRepo);
             readUsages(con, project, repo, runId, byRepo);
             readSwallowed(con, project, repo, runId, byRepo);
             readErrors(con, project, repo, runId, byRepo);
-            readCustomExceptions(con, project, repo, runId, byRepo);
             report.results.addAll(byRepo.values());
             return report;
         }
     }
 
-    /** Projenin repoları; scanRunId null ise projenin en son taraması */
+    /** Projenin (project boşsa taramadaki tüm) repoları; scanRunId null ise en son tarama */
     public List<RepoRow> repos(String project, Long scanRunId) throws SQLException {
+        project = blankToNull(project);
         try (Connection con = PostgresExporter.connect(db)) {
             con.setReadOnly(true);
             long runId = scanRunId != null ? scanRunId : latestRun(con, project, null);
@@ -108,18 +114,19 @@ public final class DbReportReader {
 
     private long latestRun(Connection con, String project, String repo) throws SQLException {
         requireRepoTable(con);
-        boolean oneRepo = repo != null && !repo.isEmpty();
-        String sql = "SELECT max(scan_run_id) FROM " + db.repoTable + " WHERE lower(project_key) = lower(?)"
-                + (oneRepo ? " AND lower(repo) = lower(?) AND status = 'SCANNED'" : "");
+        String sql = "SELECT max(scan_run_id) FROM " + db.repoTable + " WHERE 1 = 1"
+                + (project != null ? " AND lower(project_key) = lower(?)" : "")
+                + (repo != null ? " AND lower(repo) = lower(?) AND status = 'SCANNED'" : "");
         try (PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, project);
-            if (oneRepo) ps.setString(2, repo);
+            int i = 1;
+            if (project != null) ps.setString(i++, project);
+            if (repo != null) ps.setString(i, repo);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 long id = rs.getLong(1);
                 if (rs.wasNull()) {
-                    throw new NoSuchElementException("Veritabanında bu proje / repo için tarama yok: " + project
-                            + (oneRepo ? "/" + repo : ""));
+                    throw new NoSuchElementException(project == null ? "Veritabanında rapor alınabilecek tarama yok"
+                            : "Veritabanında bu proje / repo için tarama yok: " + scope(project, repo));
                 }
                 return id;
             }
@@ -149,7 +156,7 @@ public final class DbReportReader {
         List<RepoRow> out = new ArrayList<RepoRow>();
         String sql = "SELECT scan_run_id, project_key, project_name, repo, branch, commit_id, status, java_file_count,"
                 + " usage_count, swallowed_error_count, custom_exception_class_count, error_count, created_at"
-                + " FROM " + db.repoTable + where(repo) + " ORDER BY repo";
+                + " FROM " + db.repoTable + where(project, repo) + " ORDER BY project_key, repo";
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 RepoRow r = new RepoRow();
@@ -176,7 +183,7 @@ public final class DbReportReader {
     private void readCounts(Connection con, String project, String repo, long runId, Map<String, RepoResult> byRepo)
             throws SQLException {
         String sql = "SELECT project_key, repo, java_file_count, target_file_count, parse_failure_count"
-                + " FROM " + db.repoTable + where(repo);
+                + " FROM " + db.repoTable + where(project, repo);
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 RepoResult r = byRepo.get(key(rs.getString(1), rs.getString(2)));
@@ -195,7 +202,7 @@ public final class DbReportReader {
                 + " u.usage_context, u.is_test, u.code_snippet, u.link, u.class_id, u.method_id, u.match_status,"
                 + " u.match_note"
                 + " FROM " + db.usageTable + " u LEFT JOIN " + db.typeTable + " t ON t.type_code = u.usage_type_code"
-                + where("u.", repo)
+                + where("u.", project, repo)
                 + " ORDER BY u.repo, u.file_path, u.line_no";
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
@@ -226,7 +233,7 @@ public final class DbReportReader {
         if (!exists(con, db.swallowedTable)) return;
         String sql = "SELECT project_key, repo, file_path, line_no, class_fqcn, method_signature, exception_class,"
                 + " catch_kind, link, class_id, method_id, match_status, match_note"
-                + " FROM " + db.swallowedTable + where(repo) + " ORDER BY repo, file_path, line_no";
+                + " FROM " + db.swallowedTable + where(project, repo) + " ORDER BY repo, file_path, line_no";
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 RepoResult r = byRepo.get(key(rs.getString(1), rs.getString(2)));
@@ -246,7 +253,7 @@ public final class DbReportReader {
     private void readErrors(Connection con, String project, String repo, long runId, Map<String, RepoResult> byRepo)
             throws SQLException {
         if (!exists(con, db.errorTable)) return;
-        String sql = "SELECT project_key, repo, stage, file_path, message FROM " + db.errorTable + where(repo)
+        String sql = "SELECT project_key, repo, stage, file_path, message FROM " + db.errorTable + where(project, repo)
                 + " ORDER BY repo, id";
         try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
@@ -263,44 +270,35 @@ public final class DbReportReader {
         }
     }
 
-    private void readCustomExceptions(Connection con, String project, String repo, long runId,
-                                      Map<String, RepoResult> byRepo) throws SQLException {
-        if (!exists(con, db.customExceptionTable)) return;
-        String sql = "SELECT project_key, repo, module, file_path, line_no, class_fqcn, parent_fqcn, is_test, link"
-                + " FROM " + db.customExceptionTable + where(repo) + " ORDER BY repo, file_path, line_no";
-        try (PreparedStatement ps = prepare(con, sql, runId, project, repo); ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                RepoResult r = byRepo.get(key(rs.getString(1), rs.getString(2)));
-                if (r == null) continue;
-                SubclassFinding s = new SubclassFinding();
-                location(s, r, rs.getString(3), rs.getString(4), rs.getInt(5), rs.getString(6), "");
-                s.parent = nz(rs.getString(7));
-                s.testCode = rs.getBoolean(8);
-                s.link = rs.getString(9);
-                r.subclasses.add(s);
-            }
-        }
-    }
-
     // ------------------------------------------------------------------ yardımcılar
 
-    private static String where(String repo) {
-        return where("", repo);
+    private static String where(String project, String repo) {
+        return where("", project, repo);
     }
 
-    /** alias: tablo takma adı ("u.") veya boş */
-    private static String where(String alias, String repo) {
-        return " WHERE " + alias + "scan_run_id = ? AND lower(" + alias + "project_key) = lower(?)"
-                + (repo == null || repo.isEmpty() ? "" : " AND lower(" + alias + "repo) = lower(?)");
+    /** alias: tablo takma adı ("u.") veya boş; project / repo null ise o koşul eklenmez */
+    private static String where(String alias, String project, String repo) {
+        return " WHERE " + alias + "scan_run_id = ?"
+                + (project == null ? "" : " AND lower(" + alias + "project_key) = lower(?)")
+                + (repo == null ? "" : " AND lower(" + alias + "repo) = lower(?)");
     }
 
     private static PreparedStatement prepare(Connection con, String sql, long runId, String project, String repo)
             throws SQLException {
         PreparedStatement ps = con.prepareStatement(sql);
-        ps.setLong(1, runId);
-        ps.setString(2, project);
-        if (repo != null && !repo.isEmpty()) ps.setString(3, repo);
+        int i = 1;
+        ps.setLong(i++, runId);
+        if (project != null) ps.setString(i++, project);
+        if (repo != null) ps.setString(i, repo);
         return ps;
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.trim().isEmpty() ? null : s.trim();
+    }
+
+    private static String scope(String project, String repo) {
+        return repo == null ? project : project + "/" + repo;
     }
 
     private static void location(Located l, RepoResult r, String module, String file, int line, String cls,

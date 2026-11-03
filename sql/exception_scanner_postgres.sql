@@ -571,46 +571,10 @@ COMMENT ON COLUMN env.exception_scan_repo.target_file_count IS 'Aranan exception
 COMMENT ON COLUMN env.exception_scan_repo.parse_failure_count IS 'Ayrıştırılamayan veya okunamayan dosya sayısı';
 COMMENT ON COLUMN env.exception_scan_repo.usage_count IS 'Repodan env.exception_usage''a yazılan kullanım sayısı';
 COMMENT ON COLUMN env.exception_scan_repo.swallowed_error_count IS 'Repodan env.swallowed_exceptions''a yazılan hata yutan catch bloğu sayısı; scan.swallowed.scope=OFF veya tablo yoksa boş';
-COMMENT ON COLUMN env.exception_scan_repo.custom_exception_class_count IS 'Aranan exception sınıflarından (exception.classes, ör. CustomException) doğrudan veya dolaylı türeyen ve bu repoda tanımlanan sınıf sayısı; aranan sınıfların kendisi sayılmaz. Sınıflar env.custom_exception_classes''ta';
+COMMENT ON COLUMN env.exception_scan_repo.custom_exception_class_count IS 'Aranan exception sınıflarından (exception.classes, ör. CustomException) doğrudan veya dolaylı türeyen ve bu repoda tanımlanan sınıf sayısı; aranan sınıfların kendisi sayılmaz. Sınıfların listesi tarama sonundaki Excel''in Alt Sınıflar sayfasındadır';
 COMMENT ON COLUMN env.exception_scan_repo.error_count IS 'Repodaki tarama hatası sayısı (env.exception_scan_error)';
 COMMENT ON COLUMN env.exception_scan_repo.clone_seconds IS 'Klonlama / güncelleme süresi (saniye)';
 COMMENT ON COLUMN env.exception_scan_repo.scan_seconds IS 'Tarama süresi (saniye)';
 COMMENT ON COLUMN env.exception_scan_repo.created_at IS 'Kaydın eklendiği an (now()); aynı taramanın tüm kayıtlarında aynıdır';
 
 CREATE INDEX ix_exception_scan_repo_repo ON env.exception_scan_repo (lower(project_key), lower(repo), scan_run_id);
-
-
--- ---------------------------------------------------------------------
---  Aranan exception'lardan türeyen sınıflar (Excel'deki "Alt Sınıflar"
---  sayfasının karşılığı); tanımlandıkları repoyla.
--- ---------------------------------------------------------------------
-CREATE TABLE env.custom_exception_classes (
-    id           bigserial     PRIMARY KEY,
-    scan_run_id  bigint        NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
-    project_key  varchar(100),
-    repo         varchar(200),
-    module       varchar(300),
-    file_path    varchar(1000) NOT NULL,
-    line_no      integer       NOT NULL,
-    class_fqcn   varchar(1000) NOT NULL,
-    parent_fqcn  varchar(1000) NOT NULL,
-    is_test      boolean       NOT NULL DEFAULT false,
-    link         varchar(2000),
-    created_at   timestamptz   NOT NULL DEFAULT now()
-);
-
-COMMENT ON TABLE  env.custom_exception_classes IS 'Aranan exception sınıflarından (exception.classes) doğrudan veya dolaylı türeyen sınıflar, tanımlandıkları repoyla. scan.global.hierarchy=true ise başka repolarda tanımlanan sınıflardan türeyenler de bulunur. exception.ignore.classes''taki sınıflar ve onlardan türeyenler yazılmaz';
-COMMENT ON COLUMN env.custom_exception_classes.id IS 'Kayıt numarası (otomatik artan)';
-COMMENT ON COLUMN env.custom_exception_classes.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
-COMMENT ON COLUMN env.custom_exception_classes.project_key IS 'Sınıfın tanımlandığı reponun projesi (Bitbucket proje anahtarı)';
-COMMENT ON COLUMN env.custom_exception_classes.repo IS 'Sınıfın tanımlandığı repo (slug)';
-COMMENT ON COLUMN env.custom_exception_classes.module IS 'Sınıfın bulunduğu modül (Maven/Gradle modül klasörü); tek modüllü projelerde (kök)';
-COMMENT ON COLUMN env.custom_exception_classes.file_path IS 'Sınıfın tanımlandığı .java dosyasının repo içindeki yolu';
-COMMENT ON COLUMN env.custom_exception_classes.line_no IS 'Sınıf tanımının başladığı satır';
-COMMENT ON COLUMN env.custom_exception_classes.class_fqcn IS 'Sınıfın paketle birlikte tam adı; iç sınıflar nokta ile (ör. a.b.Dis.IcException)';
-COMMENT ON COLUMN env.custom_exception_classes.parent_fqcn IS 'Sınıfın extends ettiği sınıfın tam adı (aranan sınıf veya ondan türeyen başka bir sınıf)';
-COMMENT ON COLUMN env.custom_exception_classes.is_test IS 'Sınıf test kodunda mı (src/test, test, tests klasörleri)';
-COMMENT ON COLUMN env.custom_exception_classes.link IS 'Sınıf tanımını Bitbucket''ta açan bağlantı, taranan commit''e sabitlenmiş';
-COMMENT ON COLUMN env.custom_exception_classes.created_at IS 'Kaydın eklendiği an (now()); aynı taramanın tüm kayıtlarında aynıdır';
-
-CREATE INDEX ix_custom_exception_classes_run ON env.custom_exception_classes (scan_run_id);

@@ -116,26 +116,26 @@ class ScanController {
     }
 
     @GetMapping("/api/reports/repos")
-    @Operation(summary = "Projenin repoları (veritabanından)",
-            description = "Projenin bir taramadaki repoları ve sayıları (env.exception_scan_repo). scanRunId verilmezse "
-                    + "projenin en son taraması. Excel için /api/reports/excel.")
+    @Operation(summary = "Taranan repolar (veritabanından)",
+            description = "Bir taramadaki repolar ve sayıları (env.exception_scan_repo); project verilirse sadece o projenin. "
+                    + "scanRunId verilmezse en son tarama. Excel için /api/reports/excel.")
     List<com.scanner.exception.db.DbReportReader.RepoRow> reportRepos(
-            @Parameter(description = "Bitbucket proje anahtarı, ör. A") @RequestParam String project,
+            @Parameter(description = "Bitbucket proje anahtarı, ör. A; boşsa tüm projeler") @RequestParam(required = false) String project,
             @Parameter(description = "env.exception_scan_run.id; boşsa en son tarama") @RequestParam(required = false) Long scanRunId)
             throws IOException, java.sql.SQLException {
         return service.dbRepos(project, scanRunId);
     }
 
     @GetMapping("/api/reports/excel")
-    @Operation(summary = "Proje veya repo bazlı Excel raporu (veritabanından)",
-            description = "Rapor istendiği anda veritabanındaki tarama sonuçlarından üretilir. repo verilirse sadece o repo, "
-                    + "verilmezse projenin tüm repoları. scanRunId verilmezse en son tarama (repo verildiyse o reponun "
-                    + "başarıyla tarandığı en son tarama).")
+    @Operation(summary = "Excel raporu (veritabanından): tüm tarama, proje veya repo",
+            description = "Rapor istendiği anda veritabanındaki tarama sonuçlarından üretilir. Parametresiz: en son taramanın "
+                    + "tamamı; project: o projenin tüm repoları; project + repo: sadece o repo. scanRunId verilmezse en son "
+                    + "tarama (repo verildiyse o reponun başarıyla tarandığı en son tarama).")
     @ApiResponse(responseCode = "200", description = "Excel dosyası")
     @ApiResponse(responseCode = "404", description = "Bu proje / repo için tarama yok")
     ResponseEntity<byte[]> reportExcel(
-            @Parameter(description = "Bitbucket proje anahtarı, ör. A") @RequestParam String project,
-            @Parameter(description = "Projedeki repo, ör. A3; boşsa tüm proje") @RequestParam(required = false) String repo,
+            @Parameter(description = "Bitbucket proje anahtarı, ör. A; boşsa tüm projeler") @RequestParam(required = false) String project,
+            @Parameter(description = "Projedeki repo, ör. A3; boşsa tüm proje (project ile birlikte verilir)") @RequestParam(required = false) String repo,
             @Parameter(description = "env.exception_scan_run.id; boşsa en son tarama") @RequestParam(required = false) Long scanRunId)
             throws IOException, java.sql.SQLException {
         ScanJobService.GeneratedReport r = service.dbReport(project, repo, scanRunId);

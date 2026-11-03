@@ -360,12 +360,6 @@ public final class ScannerApp {
                             ? "Uyarı: " + cfg.db.repoTable + " tablosu yok, taranan repolar yazılmadı; rapor API'si "
                                     + "(/api/reports/excel) bu tablo olmadan çalışmaz (sql/exception_scanner_postgres.sql ile oluşturun)."
                             : "Veritabanı: " + ir.repos + " repo " + cfg.db.repoTable + " tablosuna yazıldı.");
-                    if (ir.customExceptions < 0) {
-                        log("Uyarı: " + cfg.db.customExceptionTable + " tablosu yok, türeyen exception sınıfları yazılmadı.");
-                    } else {
-                        log("Veritabanı: " + ir.customExceptions + " türeyen exception sınıfı " + cfg.db.customExceptionTable
-                                + " tablosuna yazıldı.");
-                    }
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0

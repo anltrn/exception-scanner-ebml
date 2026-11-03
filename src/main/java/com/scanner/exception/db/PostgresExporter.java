@@ -5,7 +5,6 @@ import com.scanner.exception.model.CatchFinding;
 import com.scanner.exception.model.EbmlFile;
 import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
-import com.scanner.exception.model.SubclassFinding;
 import com.scanner.exception.model.UsageFinding;
 import com.scanner.exception.scan.UsagePattern;
 
@@ -160,8 +159,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public boolean swallowedCountWritten;
         /** env.exception_scan_repo'ya yazılan repo sayısı; tablo yoksa -1 */
         public int repos;
-        /** env.custom_exception_classes'a yazılan sınıf sayısı; tablo yoksa -1 */
-        public int customExceptions;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -231,7 +228,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             ir.errors = insertErrors(results, ir.runId);
             insertSwallowed(results, ir);
             insertRepos(results, ir);
-            insertCustomExceptions(results, ir);
 
             // Sütun sonradan eklendi: SQL dosyasının eski sürümüyle kurulan tabloda yoksa yazılmaz
             boolean catchCount = ir.swallowed >= 0 && hasColumn(db.runTable, "swallowed_error_count");
@@ -799,44 +795,6 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             if (!DbMatcher.CLASS_NOT_FOUND.equals(l.matchStatus)) n++;
         }
         return n;
-    }
-
-    /** Aranan exception'lardan (doğrudan veya dolaylı) türeyen sınıflar, tanımlandıkları repoyla */
-    private void insertCustomExceptions(List<RepoResult> results, InsertResult ir) throws SQLException {
-        if (!exists(db.customExceptionTable)) {
-            ir.customExceptions = -1;
-            return;
-        }
-        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.customExceptionTable
-                + " (scan_run_id, project_key, repo, module, file_path, line_no, class_fqcn, parent_fqcn, is_test, link)"
-                + " VALUES (?,?,?,?,?,?,?,?,?,?)");
-        try {
-            int pending = 0;
-            for (RepoResult r : results) {
-                for (SubclassFinding s : r.subclasses) {
-                    int i = 1;
-                    ps.setLong(i++, ir.runId);
-                    ps.setString(i++, cut(s.projectKey, 100));
-                    ps.setString(i++, cut(s.repo, 200));
-                    ps.setString(i++, cut(s.module, 300));
-                    ps.setString(i++, cut(s.file, 1000));
-                    ps.setInt(i++, s.line);
-                    ps.setString(i++, cut(s.className, 1000));
-                    ps.setString(i++, cut(s.parent, 1000));
-                    ps.setBoolean(i++, s.testCode);
-                    ps.setString(i++, cut(s.link, 2000));
-                    ps.addBatch();
-                    ir.customExceptions++;
-                    if (++pending >= BATCH) {
-                        ps.executeBatch();
-                        pending = 0;
-                    }
-                }
-            }
-            if (pending > 0) ps.executeBatch();
-        } finally {
-            ps.close();
-        }
     }
 
     /** table: "sema.tablo" veya "tablo" (search_path'teki) */

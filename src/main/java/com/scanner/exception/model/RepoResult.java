@@ -15,12 +15,18 @@ public final class RepoResult {
     /** Hata yutan catch blokları (boş, sadece log, log + return); kapsamı scan.swallowed.scope belirler */
     public final List<CatchFinding> swallowed = new ArrayList<CatchFinding>();
     public final List<SubclassFinding> subclasses = new ArrayList<SubclassFinding>();
+    /** Veritabanından okunan raporlarda alt sınıf listesi yerine sadece sayı bilinir; null ise subclasses.size() */
+    public Integer subclassCount;
     public final List<ScanError> errors = new ArrayList<ScanError>();
     /** Ekran, region ve Jasper rapor dosyaları (ebml.enabled=true ise) */
     public final List<EbmlFile> ebmlFiles = new ArrayList<EbmlFile>();
 
     public RepoResult(RepoInfo repo) {
         this.repo = repo;
+    }
+
+    public int subclassCount() {
+        return subclassCount != null ? subclassCount.intValue() : subclasses.size();
     }
 
     public long count(String pattern) {

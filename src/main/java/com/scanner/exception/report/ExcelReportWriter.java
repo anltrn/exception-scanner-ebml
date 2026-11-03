@@ -51,16 +51,21 @@ public final class ExcelReportWriter {
     private final Config cfg;
     private final Date scanDate;
     private final boolean ebml;
+    private final boolean subclassSheet;
 
     public ExcelReportWriter(Config cfg, Date scanDate) {
-        this(cfg, scanDate, cfg.ebml.enabled);
+        this(cfg, scanDate, false);
     }
 
-    /** @param ebml false: EBML sayfası ve sütunları yazılmaz (veritabanından üretilen raporlar) */
-    public ExcelReportWriter(Config cfg, Date scanDate, boolean ebml) {
+    /**
+     * @param fromDatabase rapor veritabanındaki taramadan üretiliyorsa true: tabloda tutulmayan EBML ve
+     *                     "Alt Sınıflar" sayfaları yazılmaz (alt sınıf sayıları yine gösterilir)
+     */
+    public ExcelReportWriter(Config cfg, Date scanDate, boolean fromDatabase) {
         this.cfg = cfg;
         this.scanDate = scanDate;
-        this.ebml = ebml;
+        this.ebml = cfg.ebml.enabled && !fromDatabase;
+        this.subclassSheet = !fromDatabase;
     }
 
     public void write(Path file, String title, List<RepoResult> results) throws IOException {
@@ -73,7 +78,7 @@ public final class ExcelReportWriter {
             usages(wb, st, results);
             messages(wb, st, results);
             if (swallowedSheet()) swallowed(wb, st, results);
-            subclasses(wb, st, results);
+            if (subclassSheet) subclasses(wb, st, results);
             if (ebml) ebmlFiles(wb, st, results);
             errors(wb, st, results);
 
@@ -109,7 +114,7 @@ public final class ExcelReportWriter {
         for (RepoResult r : results) {
             files += r.javaFiles;
             total += r.usages.size();
-            subs += r.subclasses.size();
+            subs += r.subclassCount();
             errs += r.errors.size();
             for (int i = 0; i < names.size(); i++) perPattern[i] += r.count(names.get(i));
         }
@@ -217,7 +222,7 @@ public final class ExcelReportWriter {
             if (ebml) {
                 for (EbmlFile.Kind k : EBML_KINDS) num(x, c++, r.count(k));
             }
-            num(x, c++, r.subclasses.size());
+            num(x, c++, r.subclassCount());
             num(x, c, r.errors.size());
         }
         t.finish();
