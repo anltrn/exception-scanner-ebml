@@ -454,7 +454,7 @@ Klonlanamayan repolar atlanır; bir repoda analiz hata verirse diğerleri devam 
 
 `java_method_id`, exception kullanımlarındaki gibi `env.java_class` / `env.java_method` ile eşleştirilir (sınıfın tam adı, metot adı ve parametre tipleri); bulunamazsa boş kalır. Kopya kod grubu ancak paylaşılan kod en az 40 satırsa raporlanır (analizörün kuralı).
 
-Gerekenler: `scan_run_id` sütunu `bigint` olmalı ve aynı taramadaki repoları ayırmak için `project_key`, `repo` sütunları eklenmeli; `sql/method_risk_tables_migration.sql` bunları yapar (tablolardaki eski kayıtları siler). `scan_run_id` hâlâ `uuid` ise o tabloya yazılmaz, logda uyarı çıkar; `project_key` / `repo` yoksa satırlar onlarsız yazılır. Tarama veritabanına yazılmadıysa (`db.enabled=false`, `--db-dry-run` veya yazma hatası) karmaşıklık sonuçları sadece dosyalara yazılır.
+Gereken: `scan_run_id` sütunu `bigint` olmalı; `sql/method_risk_tables_migration.sql` bunu yapar (tablolardaki eski kayıtları siler). `scan_run_id` hâlâ `uuid` ise o tabloya yazılmaz, logda uyarı çıkar. Tablolarda proje / repo sütunu yoktur; aynı taramadaki farklı repoların aynı yoldaki dosyaları ayırt edilemez (`risk_inputs_json` / `meta_json` içindeki `analyzedPath` klonun yolunu gösterir). İleride `project_key` ve `repo` sütunları eklenirse tarayıcı onları da doldurur. Tarama veritabanına yazılmadıysa (`db.enabled=false`, `--db-dry-run` veya yazma hatası) karmaşıklık sonuçları sadece dosyalara yazılır.
 
 ## Paralel işleme
 

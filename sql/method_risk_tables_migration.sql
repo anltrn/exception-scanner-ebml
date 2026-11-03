@@ -1,8 +1,12 @@
 -- =====================================================================
 --  Kod karmaşıklığı tabloları (env.method_risk_analyze, env.method_similarity)
---  için geçiş: scan_run_id'yi env.exception_scan_run.id'ye (bigint) bağlar ve
---  aynı taramadaki repoları ayırmak için project_key / repo sütunlarını ekler.
+--  için geçiş: scan_run_id'yi env.exception_scan_run.id'ye (bigint) bağlar.
 --  Tablolar envanter tarafında oluşturulmuştur; bu dosya bir kez çalıştırılır.
+--
+--  Not: tablolarda proje / repo sütunu olmadığı için aynı taramadaki farklı
+--  repoların satırları file_path ile ayırt edilemez. İleride gerekirse
+--  project_key varchar(100) ve repo varchar(200) sütunları eklenebilir;
+--  tarayıcı bu sütunlar varsa onları da doldurur.
 -- =====================================================================
 
 -- scan_run_id: uuid -> env.exception_scan_run.id (bigint). Tablolarda veri varsa uuid değerleri taşınamaz;
@@ -12,24 +16,16 @@ TRUNCATE env.method_risk_analyze, env.method_similarity;
 ALTER TABLE env.method_risk_analyze
     ALTER COLUMN scan_run_id TYPE bigint USING NULL,
     ADD CONSTRAINT fk_method_risk_analyze_run FOREIGN KEY (scan_run_id)
-        REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
-    ADD COLUMN project_key varchar(100),
-    ADD COLUMN repo        varchar(200);
+        REFERENCES env.exception_scan_run (id) ON DELETE CASCADE;
 
 ALTER TABLE env.method_similarity
     ALTER COLUMN scan_run_id TYPE bigint USING NULL,
     ADD CONSTRAINT fk_method_similarity_run FOREIGN KEY (scan_run_id)
-        REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
-    ADD COLUMN project_key varchar(100),
-    ADD COLUMN repo        varchar(200);
+        REFERENCES env.exception_scan_run (id) ON DELETE CASCADE;
 
-CREATE INDEX ix_method_risk_analyze_run  ON env.method_risk_analyze (scan_run_id, project_key, repo);
-CREATE INDEX ix_method_similarity_run    ON env.method_similarity (scan_run_id, project_key, repo);
+CREATE INDEX ix_method_risk_analyze_run  ON env.method_risk_analyze (scan_run_id);
+CREATE INDEX ix_method_similarity_run    ON env.method_similarity (scan_run_id);
 CREATE INDEX ix_method_risk_analyze_java ON env.method_risk_analyze (java_method_id);
 
 COMMENT ON COLUMN env.method_risk_analyze.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
-COMMENT ON COLUMN env.method_risk_analyze.project_key IS 'Metodun bulunduğu reponun projesi (Bitbucket proje anahtarı)';
-COMMENT ON COLUMN env.method_risk_analyze.repo IS 'Metodun bulunduğu repo (slug); file_path bu repoya göre yazılır';
 COMMENT ON COLUMN env.method_similarity.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
-COMMENT ON COLUMN env.method_similarity.project_key IS 'Grubun bulunduğu reponun projesi (Bitbucket proje anahtarı)';
-COMMENT ON COLUMN env.method_similarity.repo IS 'Grubun bulunduğu repo (slug); group_key ve members_json''daki dosya yolları bu repoya göredir';
