@@ -56,6 +56,8 @@ public final class Config {
     public final boolean perProjectReports;
     public final List<UsagePattern> patterns;
     public final boolean throwOnly;
+    /** true: alt sınıflar tüm repolardan birlikte çıkarılır, bir repodaki alt sınıf diğerlerinde de aranır */
+    public final boolean globalHierarchy;
     /** false: hiç Excel raporu yazılmaz (report.excel) */
     public final boolean reportExcel;
     /** Excel'de "Yutulan Exception'lar" sayfası (report.swallowed) */
@@ -292,6 +294,7 @@ public final class Config {
         perProjectReports = Boolean.parseBoolean(get(p, "report.per.project", "true"));
         patterns = UsagePattern.load(p);
         throwOnly = Boolean.parseBoolean(get(p, "scan.throw.only", "false"));
+        globalHierarchy = Boolean.parseBoolean(get(p, "scan.global.hierarchy", "true"));
         reportExcel = Boolean.parseBoolean(get(p, "report.excel", "true"));
         reportSwallowed = Boolean.parseBoolean(get(p, "report.swallowed", "true"));
         String scope = get(p, "scan.swallowed.scope", "TARGET").toUpperCase(Locale.ROOT);

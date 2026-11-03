@@ -16,6 +16,7 @@ import com.scanner.exception.repo.LocalRepos;
 import com.scanner.exception.report.ExcelReportWriter;
 import com.scanner.exception.scan.EbmlScanner;
 import com.scanner.exception.scan.JavaSourceScanner;
+import com.scanner.exception.scan.TypeHierarchy;
 import com.scanner.exception.scan.TypeMatcher;
 import com.scanner.exception.scan.UsagePattern;
 import com.scanner.exception.server.ScanServerApplication;
@@ -248,22 +249,59 @@ public final class ScannerApp {
         ExecutorService scanPool = Executors.newFixedThreadPool(cfg.threads);
         List<CompletableFuture<RepoResult>> futures =
                 new ArrayList<CompletableFuture<RepoResult>>(java.util.Collections.nCopies(total, null));
+        boolean global = cfg.globalHierarchy && !cfg.exceptionClasses.isEmpty();
         try {
-            for (final int idx : interleaveByProject(repos)) {
-                final RepoInfo repo = repos.get(idx);
-                futures.set(idx, CompletableFuture
-                        .supplyAsync(() -> checkout(repo, cfg, git), clonePool)
-                        .thenApplyAsync(failed -> failed != null ? failed : scanRepo(repo, cfg, scanner), scanPool)
-                        .thenApply(r -> {
-                            String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
-                                    r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
-                                    r.count(EbmlFile.Kind.PROCESS));
-                            log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s (klon %s, tarama %s)",
-                                    done.incrementAndGet(), total, repo.id(), repo.localPath, r.javaFiles, r.usages.size(),
-                                    ebmlInfo, r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata",
-                                    seconds(repo.cloneMillis), seconds(repo.scanMillis)));
-                            return r;
-                        }));
+            if (global) {
+                // 1. aşama: tüm repolar klonlanır ve sınıf başlıkları okunur; alt sınıflar repolar arası çıkarılır
+                log("Sınıf hiyerarşisi tüm repolardan çıkarılıyor (scan.global.hierarchy=true)...");
+                final AtomicInteger prepared = new AtomicInteger();
+                List<CompletableFuture<Object>> prep =
+                        new ArrayList<CompletableFuture<Object>>(java.util.Collections.nCopies(total, null));
+                for (final int idx : interleaveByProject(repos)) {
+                    final RepoInfo repo = repos.get(idx);
+                    prep.set(idx, CompletableFuture
+                            .supplyAsync(() -> checkout(repo, cfg, git), clonePool)
+                            .thenApplyAsync(failed -> failed != null ? failed : collectHeaders(repo, scanner), scanPool)
+                            .thenApply(o -> {
+                                log(String.format("[%d/%d] %s: %s (klon %s)", prepared.incrementAndGet(), total, repo.id(),
+                                        o instanceof RepoResult ? "klonlanamadı" : ((List<?>) o).size() + " extends'li sınıf",
+                                        seconds(repo.cloneMillis)));
+                                return o;
+                            }));
+                }
+                CompletableFuture.allOf(prep.toArray(new CompletableFuture<?>[0])).join();
+                Map<RepoInfo, List<TypeHierarchy.Header>> headers = new java.util.LinkedHashMap<RepoInfo, List<TypeHierarchy.Header>>();
+                for (int i = 0; i < total; i++) {
+                    Object o = prep.get(i).join();
+                    if (o instanceof RepoResult) futures.set(i, CompletableFuture.completedFuture((RepoResult) o));
+                    else {
+                        @SuppressWarnings("unchecked")
+                        List<TypeHierarchy.Header> h = (List<TypeHierarchy.Header>) o;
+                        headers.put(repos.get(i), h);
+                    }
+                }
+                final TypeHierarchy.Result hierarchy = TypeHierarchy.resolve(cfg, headers);
+                headers = null; // başlıklar artık gerekmiyor
+                prep = null;
+                log(String.format("Sınıf hiyerarşisi: %d alt sınıf bulundu, toplam %d sınıf aranacak",
+                        hierarchy.subclassCount(), hierarchy.targets.size()));
+
+                // 2. aşama: kullanımlar, tüm repolardan çıkan sınıf listesiyle aranır
+                for (final int idx : interleaveByProject(repos)) {
+                    if (futures.get(idx) != null) continue; // klonlanamadı
+                    final RepoInfo repo = repos.get(idx);
+                    futures.set(idx, CompletableFuture
+                            .supplyAsync(() -> scanRepo(repo, cfg, scanner, hierarchy), scanPool)
+                            .thenApply(r -> logScanned(cfg, repo, r, done.incrementAndGet(), total)));
+                }
+            } else {
+                for (final int idx : interleaveByProject(repos)) {
+                    final RepoInfo repo = repos.get(idx);
+                    futures.set(idx, CompletableFuture
+                            .supplyAsync(() -> checkout(repo, cfg, git), clonePool)
+                            .thenApplyAsync(failed -> failed != null ? failed : scanRepo(repo, cfg, scanner, null), scanPool)
+                            .thenApply(r -> logScanned(cfg, repo, r, done.incrementAndGet(), total)));
+                }
             }
             CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0])).join();
         } finally {
@@ -575,11 +613,35 @@ public final class ScannerApp {
         }
     }
 
-    private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner) {
+    private static RepoResult logScanned(Config cfg, RepoInfo repo, RepoResult r, int n, int total) {
+        String ebmlInfo = !cfg.ebml.enabled ? "" : String.format(", %d ekran, %d popup, %d region, %d rapor, %d process",
+                r.count(EbmlFile.Kind.SCREEN), r.count(EbmlFile.Kind.POPUP), r.count(EbmlFile.Kind.REGION), r.count(EbmlFile.Kind.REPORT),
+                r.count(EbmlFile.Kind.PROCESS));
+        log(String.format("[%d/%d] %s (%s): %d Java dosyası, %d eşleşme%s%s (klon %s, tarama %s)",
+                n, total, repo.id(), repo.localPath, r.javaFiles, r.usages.size(),
+                ebmlInfo, r.errors.isEmpty() ? "" : ", " + r.errors.size() + " hata",
+                seconds(repo.cloneMillis), seconds(repo.scanMillis)));
+        return r;
+    }
+
+    /** Reponun sınıf başlıkları; okunamazsa boş liste (hata kullanım taramasında raporlanır) */
+    private static List<TypeHierarchy.Header> collectHeaders(RepoInfo repo, JavaSourceScanner scanner) {
+        long t0 = System.nanoTime();
+        try {
+            return scanner.collectHeaders(repo);
+        } catch (Exception | OutOfMemoryError e) {
+            log("Uyarı: " + repo.id() + " sınıf başlıkları okunamadı: " + e);
+            return new ArrayList<TypeHierarchy.Header>();
+        } finally {
+            repo.scanMillis += (System.nanoTime() - t0) / 1_000_000;
+        }
+    }
+
+    private static RepoResult scanRepo(RepoInfo repo, Config cfg, JavaSourceScanner scanner, TypeHierarchy.Result hierarchy) {
         long t0 = System.nanoTime();
         try {
             boolean java = !cfg.exceptionClasses.isEmpty() || cfg.collectAllSwallowed();
-            RepoResult result = java ? scanner.scan(repo) : new RepoResult(repo);
+            RepoResult result = java ? scanner.scan(repo, hierarchy) : new RepoResult(repo);
             if (cfg.ebml.enabled) new EbmlScanner(cfg).scan(repo, result);
             return result;
         } catch (RuntimeException e) {
@@ -593,7 +655,7 @@ public final class ScannerApp {
                     + "bellek verin veya --threads 1 ile tekrar deneyin."));
             return r;
         } finally {
-            repo.scanMillis = (System.nanoTime() - t0) / 1_000_000;
+            repo.scanMillis += (System.nanoTime() - t0) / 1_000_000;
         }
     }
 

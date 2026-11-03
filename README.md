@@ -34,6 +34,7 @@ mvn -q package
 | `exception.ignore.classes` | Eski sınıftan türeyen ama yeni yapıya ait olan sınıflar (örn. yeni `AppException`) |
 | `pattern.N.args` | Aranacak constructor şekli, örn. `0,STRING` (aşağıya bakın) |
 | `scan.throw.only` | `true` ise sadece doğrudan `throw new ...` şeklindekiler |
+| `scan.global.hierarchy` | `true` (varsayılan): alt sınıflar önce tüm repolardan birlikte çıkarılır; ortak bir repoda tanımlanan `X extends CustomException` diğer repolarda da aranır, repolar arası zincirler de çözülür. Bunun için önce tüm repolar klonlanıp sınıf başlıkları okunur, kullanım taraması sonra başlar. `false`: her repo sadece kendi içinde tanımlanan alt sınıfları bilir |
 | `git.branch` | Boşsa varsayılan dal; `develop` gibi bir dal da verilebilir |
 
 ### Repo seçimi

@@ -93,6 +93,14 @@ public final class JavaSourceScanner {
      * 2. geçiş: sadece aranan sınıf veya metot adlarını metin olarak içeren dosyaları ayrıştırıp kullanımları bulur.
      */
     public RepoResult scan(RepoInfo repo) {
+        return scan(repo, null);
+    }
+
+    /**
+     * @param hierarchy tüm repolardan çıkarılmış sınıf hiyerarşisi (scan.global.hierarchy=true); verilirse
+     *                  1. geçiş yapılmaz, aranacak sınıflar ve bu reponun alt sınıfları oradan alınır
+     */
+    public RepoResult scan(RepoInfo repo, TypeHierarchy.Result hierarchy) {
         RepoResult result = new RepoResult(repo);
         Path root = repo.localPath;
 
@@ -106,21 +114,7 @@ public final class JavaSourceScanner {
         result.javaFiles = files.size();
 
         Map<Path, String> moduleCache = new ConcurrentHashMap<Path, String>();
-        long maxBytes = cfg.maxFileKb * 1024L;
-        List<Path> scannable = new ArrayList<Path>(files.size());
-        for (Path f : files) {
-            try {
-                long size = Files.size(f);
-                if (size > maxBytes) {
-                    result.errors.add(new ScanError(repo, ScanError.Stage.SKIPPED, relative(root, f), "Dosya çok büyük ("
-                            + (size / 1024) + " KB). Sınırı scan.max.file.kb ayarıyla değiştirebilirsiniz."));
-                    continue;
-                }
-            } catch (IOException e) {
-                // okuma hatası 2. geçişte raporlanır
-            }
-            scannable.add(f);
-        }
+        List<Path> scannable = scannable(repo, files, result);
 
         // ---- 1. geçiş: aranan sınıfların alt sınıfları.
         // "class X extends Y" ile Y'ye bağlanabilmek için dosyada Y'nin adı geçmek zorundadır. Bu yüzden
@@ -128,7 +122,11 @@ public final class JavaSourceScanner {
         // hedeflerden birinin adını içeren dosyalar ayrıştırılır. Yeni alt sınıf bulundukça onların adlarıyla
         // dizine tekrar bakılır (X'ten türeyenler için). Sonuç tüm dosyaları ayrıştırmakla aynıdır.
         Set<String> targets = new LinkedHashSet<String>(cfg.exceptionClasses);
-        if (!targets.isEmpty()) {
+        if (hierarchy != null) {
+            targets = hierarchy.targets;
+            List<SubclassFinding> own = hierarchy.subclasses.get(repo);
+            if (own != null) result.subclasses.addAll(own);
+        } else if (!targets.isEmpty()) {
             Map<String, List<Integer>> index = identifierIndex(scannable);
             List<ClassHeader> headers = new ArrayList<ClassHeader>();
             Set<Integer> parsed = new HashSet<Integer>();
@@ -199,6 +197,66 @@ public final class JavaSourceScanner {
         Collections.sort(result.usages, (a, b) -> a.file.equals(b.file)
                 ? Integer.compare(a.line, b.line) : a.file.compareTo(b.file));
         return result;
+    }
+
+    /** Boyut sınırını aşan dosyalar hariç Java dosyaları; result verilirse atlananlar hata olarak yazılır */
+    private List<Path> scannable(RepoInfo repo, List<Path> files, RepoResult result) {
+        long maxBytes = cfg.maxFileKb * 1024L;
+        List<Path> out = new ArrayList<Path>(files.size());
+        for (Path f : files) {
+            try {
+                long size = Files.size(f);
+                if (size > maxBytes) {
+                    if (result != null) {
+                        result.errors.add(new ScanError(repo, ScanError.Stage.SKIPPED, relative(repo.localPath, f), "Dosya çok büyük ("
+                                + (size / 1024) + " KB). Sınırı scan.max.file.kb ayarıyla değiştirebilirsiniz."));
+                    }
+                    continue;
+                }
+            } catch (IOException e) {
+                // okuma hatası 2. geçişte raporlanır
+            }
+            out.add(f);
+        }
+        return out;
+    }
+
+    /** "class X ... extends" içeren dosyaları ayıklamak için (generic sınırlardaki extends de geçer, zararı yok) */
+    private static final Pattern CLASS_EXTENDS = Pattern.compile("\\bclass\\s+\\w+[^{;]*\\bextends\\b");
+
+    /**
+     * scan.global.hierarchy=true için reponun extends yazılan sınıflarının başlıkları. Hangi sınıfların
+     * aranacağı henüz bilinmediğinden "class ... extends" içeren tüm dosyalar ayrıştırılır.
+     * Okuma/ayrıştırma hataları burada değil, taramanın 2. geçişinde raporlanır.
+     */
+    public List<TypeHierarchy.Header> collectHeaders(RepoInfo repo) throws IOException {
+        Path root = repo.localPath;
+        List<Path> files = scannable(repo, collectJavaFiles(root), null);
+        Map<Path, String> moduleCache = new ConcurrentHashMap<Path, String>();
+        return parallel(files, f -> {
+            String source = readSource(f);
+            if (!source.contains("extends") || !CLASS_EXTENDS.matcher(source).find()) return null;
+            List<TypeHierarchy.Header> out = new ArrayList<TypeHierarchy.Header>();
+            String rel = relative(root, f).intern();
+            String module = null;
+            for (ClassHeader h : classHeaders(f, source)) {
+                if (module == null) module = moduleOf(root, f.getParent(), moduleCache).intern();
+                List<String[]> parents = new ArrayList<String[]>(h.extendsWritten.size());
+                for (String ext : h.extendsWritten) {
+                    List<String> c = TypeMatcher.candidates(ext, h.ctx);
+                    String[] arr = new String[c.size() + 1];
+                    arr[0] = ext.intern();
+                    for (int i = 0; i < c.size(); i++) arr[i + 1] = c.get(i).intern();
+                    parents.add(arr);
+                }
+                out.add(new TypeHierarchy.Header(h.fqn, rel, module, h.line, parents));
+            }
+            return out.isEmpty() ? null : out;
+        });
+    }
+
+    static boolean isTestPath(String rel) {
+        return TEST_PATH.matcher(rel).matches();
     }
 
     /**

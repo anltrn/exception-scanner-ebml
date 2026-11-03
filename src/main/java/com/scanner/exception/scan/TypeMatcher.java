@@ -4,7 +4,9 @@ import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.body.TypeDeclaration;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -29,6 +31,31 @@ public final class TypeMatcher {
             if (resolvesTo(ctx, first, firstFqn)) return fqn;
         }
         return null;
+    }
+
+    /**
+     * Kodda yazılan tip adının dosyanın import'larına göre karşılık gelebileceği tam adlar. match() ile
+     * aynı kuralları uygular; dosyanın import özeti yerine bu kısa liste saklanabilsin diye vardır.
+     */
+    static List<String> candidates(String written, ImportContext ctx) {
+        List<String> out = new ArrayList<String>();
+        out.add(written); // zaten tam adla yazılmış olabilir
+        String first = written.contains(".") ? written.substring(0, written.indexOf('.')) : written;
+        String rest = written.substring(first.length()); // "Outer.Inner" -> ".Inner"
+        if (ctx.declaredTypes.contains(first)) {
+            out.add((ctx.pkg.isEmpty() ? first : ctx.pkg + "." + first) + rest);
+            return out;
+        }
+        for (String imp : ctx.singleImports) {
+            if (simpleName(imp).equals(first)) {
+                out.add(imp + rest);
+                return out; // aynı isimli sınıf import edilmişse başka yere bakılmaz
+            }
+        }
+        for (String w : ctx.wildcardPackages) out.add(w + "." + first + rest);
+        if (!ctx.pkg.isEmpty()) out.add(ctx.pkg + "." + first + rest);
+        out.add("java.lang." + first + rest);
+        return out;
     }
 
     private static boolean resolvesTo(ImportContext ctx, String simple, String fqn) {

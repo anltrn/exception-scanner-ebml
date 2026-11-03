@@ -433,7 +433,8 @@ public final class ExcelReportWriter {
                 text(x, 4, sf.className);
                 text(x, 5, sf.parent);
                 num(x, 6, sf.line);
-                text(x, 7, "Bu repodaki kullanımları da tarandı. Başka repolarda kullanılıyorsa "
+                text(x, 7, cfg.globalHierarchy ? "Tüm repolardaki kullanımları da tarandı."
+                        : "Bu repodaki kullanımları da tarandı. Başka repolarda kullanılıyorsa "
                         + "exception.classes ayarına ekleyip taramayı tekrarlayın.");
                 t.link(x, 8, sf.link);
             }
