@@ -407,6 +407,13 @@ public final class ScannerApp {
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
         if (cfg.complexity.enabled) {
+            // Exception bulguları raporlara ve veritabanına yazıldı; karmaşıklık analizine bellek kalsın
+            for (RepoResult r : results) {
+                r.usages.clear();
+                r.swallowed.clear();
+                r.subclasses.clear();
+                r.ebmlFiles.clear();
+            }
             summary.put("complexityReports", analyzeComplexity(cfg, results, outDir.resolve("complexity"), scanRunId));
         }
         summary.put("javaFiles", javaFiles);
@@ -460,7 +467,7 @@ public final class ScannerApp {
             log("Uyarı: tarama veritabanına yazılmadığı için karmaşıklık sonuçları tablolara yazılmayacak, sadece dosyalara.");
         }
         java.util.Set<String> warned = new java.util.HashSet<String>();
-        long dbMethods = 0, dbMatched = 0, dbGroups = 0, dbSkipped = 0;
+        long dbMethods = 0, dbMatched = 0, dbGroups = 0, dbSkipped = 0, dbBelowMin = 0;
         log("Kod karmaşıklığı analizi başlıyor (complexity.engine=" + cfg.complexity.engine.name().toLowerCase(java.util.Locale.ROOT)
                 + "): " + results.size() + " repo");
         ComplexityRunner runner = new ComplexityRunner(cfg.complexity);
@@ -498,6 +505,7 @@ public final class ScannerApp {
                                         done, results.size(), repo.id(), res.engine(), err));
                             }
                             dbSkipped += ci.groupsSkipped;
+                            dbBelowMin += ci.groupsBelowMin;
                             if (ci.methods > 0) {
                                 dbMethods += ci.methods;
                                 dbMatched += ci.methodsMatched;
@@ -533,6 +541,8 @@ public final class ScannerApp {
             log("Veritabanı: " + dbMethods + " metot " + cfg.db.methodRiskTable + " tablosuna (" + dbMatched
                     + " tanesi java_method_id ile eşleşti), " + dbGroups + " kopya / benzer kod grubu "
                     + cfg.db.methodSimilarityTable + " tablosuna yazıldı (scan_run_id=" + scanRunId + ")"
+                    + (dbBelowMin > 0 ? "; benzerliği %" + cfg.db.similarityMinPercent + "'den düşük " + dbBelowMin
+                            + " grup yazılmadı (db.method.similarity.min.percent)" : "")
                     + (dbSkipped > 0 ? "; tablonun kısıtına uymayan " + dbSkipped + " grup atlandı" : "") + ".");
         }
         return written;

@@ -95,7 +95,7 @@ public final class ComplexityRunner {
         ScanOptions d = ScanOptions.defaults();
         return new ScanOptions(cfg.workers > 0 ? cfg.workers : d.workers(), d.progressEvery(), cfg.include, cfg.exclude,
                 fullDetail ? ScanOptions.ReportDetail.FULL : ScanOptions.ReportDetail.SUMMARY,
-                true, null, false, cfg.duplicates, d.minDuplicateTokens(), cfg.duplicates,
+                true, null, false, cfg.duplicates, d.minDuplicateTokens(), cfg.duplicates && cfg.nearDuplicates,
                 d.nearDuplicateAutoSkipMinFiles(), false, d.pmdMetricAlignment());
     }
 

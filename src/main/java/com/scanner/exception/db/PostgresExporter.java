@@ -886,6 +886,8 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int groups;
         /** Tablodaki bir CHECK kısıtına uymadığı için atlanan grup sayısı (ör. benzerlik oranı alt sınırı) */
         public int groupsSkipped;
+        /** db.method.similarity.min.percent'ten düşük olduğu için yazılmayan grup sayısı */
+        public int groupsBelowMin;
         /** Yazılamadıysa nedeni (tablo yok, scan_run_id tipi uyumsuz, atlanan grupların kısıtı); taramada bir kez loglanır */
         public final List<String> warnings = new ArrayList<String>();
         /** Bu repoda bir tablonun kaydı hata verdiyse hata mesajı (o tablo geri alınır, diğeri yazılır) */
@@ -1026,6 +1028,10 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         java.util.Map<String, Integer> skippedBy = new java.util.TreeMap<String, Integer>();
         try {
             for (com.scanner.complexity.AnalysisReport.DuplicateGroup g : report.duplicateGroups()) {
+                if (g.similarityPercent() < db.similarityMinPercent) {
+                    ci.groupsBelowMin++;
+                    continue;
+                }
                 int i = 1;
                 ps.setLong(i++, scanRunId);
                 ps.setString(i++, g.groupId());

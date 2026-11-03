@@ -191,6 +191,8 @@ public final class Config {
         /** true: JSON'da her metot (varsayılan); false: sadece dosya özetleri ve en riskli metotlar (sadece parser yolu) */
         public final boolean fullDetail;
         public final boolean duplicates;
+        /** PMD CPD ile benzer (birebir olmayan) kod tespiti; tüm dosyaların token'larını bellekte tutar */
+        public final boolean nearDuplicates;
         /** Bir repoda aynı anda ayrıştırılan dosya sayısı; 0 = işlemci sayısı kadar (bellek yetmezse düşürün) */
         public final int workers;
         /** JSON'un yanında okunabilir Markdown raporu da yazılsın mı */
@@ -219,6 +221,7 @@ public final class Config {
             }
             fullDetail = detail.equals("full");
             duplicates = Boolean.parseBoolean(get(p, "complexity.duplicates", "true"));
+            nearDuplicates = Boolean.parseBoolean(get(p, "complexity.duplicates.near", "true"));
             markdown = Boolean.parseBoolean(get(p, "complexity.markdown", "true"));
             workers = Integer.parseInt(get(p, "complexity.workers", "0").trim());
             if (workers < 0) throw new IllegalArgumentException("complexity.workers 0 veya pozitif olmalı: " + workers);
@@ -252,6 +255,8 @@ public final class Config {
         public final List<String> constructorNames;
         public final boolean insertUnmatched;
         public final String swallowedTable;
+        /** Bu orandan düşük benzerlik grupları method_similarity'ye yazılmaz (tablonun alt sınır kısıtıyla aynı tutulur) */
+        public final int similarityMinPercent;
         /** Taramada taranan her repo için bir satır (rapor API'si buradan okur) */
         public final String repoTable;
         /** Kod karmaşıklığı: metot bazlı risk ve kopya / benzer kod grupları (complexity.enabled=true ile) */
@@ -298,6 +303,7 @@ public final class Config {
             methodRiskTable = ident(get(p, "db.method.risk.table", schema + ".method_risk_analyze"), "db.method.risk.table");
             methodSimilarityTable = ident(get(p, "db.method.similarity.table", schema + ".method_similarity"),
                     "db.method.similarity.table");
+            similarityMinPercent = Integer.parseInt(get(p, "db.method.similarity.min.percent", "51").trim());
             note = get(p, "db.note", "");
             noteZone = java.time.ZoneId.of(get(p, "db.note.zone", "Europe/Istanbul"));
             deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");
