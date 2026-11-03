@@ -356,6 +356,20 @@ public final class ScannerApp {
                         log("Uyarı: " + cfg.db.runTable + " tablosunda swallowed_error_count sütunu yok, hata yutan catch sayısı tarama kaydına "
                                 + "yazılmadı (ALTER TABLE " + cfg.db.runTable + " ADD COLUMN swallowed_error_count integer).");
                     }
+                    log(ir.repos < 0
+                            ? "Uyarı: " + cfg.db.repoTable + " tablosu yok, taranan repolar yazılmadı; rapor API'si "
+                                    + "(/api/reports/excel) bu tablo olmadan çalışmaz (sql/exception_scanner_postgres.sql ile oluşturun)."
+                            : "Veritabanı: " + ir.repos + " repo " + cfg.db.repoTable + " tablosuna yazıldı.");
+                    if (ir.customExceptions < 0) {
+                        log("Uyarı: " + cfg.db.customExceptionTable + " tablosu yok, türeyen exception sınıfları yazılmadı.");
+                    } else {
+                        log("Veritabanı: " + ir.customExceptions + " türeyen exception sınıfı " + cfg.db.customExceptionTable
+                                + " tablosuna yazıldı.");
+                    }
+                    if (!ir.messageKindWritten) {
+                        log("Uyarı: " + cfg.db.usageTable + " tablosunda message_kind sütunu yok, rapor API'sinin Mesajlar "
+                                + "sayfası boş kalır (ALTER TABLE " + cfg.db.usageTable + " ADD COLUMN message_kind varchar(30)).");
+                    }
                     if (cfg.ebml.enabled) {
                         log("Veritabanı: " + ir.screens + " ekran, " + ir.popups + " popup, " + ir.regions + " region, " + ir.reports
                                 + " Jasper rapor, " + ir.processes + " process yazıldı" + (ir.ebmlSkipped > 0

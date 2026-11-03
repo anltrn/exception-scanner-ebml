@@ -50,10 +50,17 @@ public final class ExcelReportWriter {
 
     private final Config cfg;
     private final Date scanDate;
+    private final boolean ebml;
 
     public ExcelReportWriter(Config cfg, Date scanDate) {
+        this(cfg, scanDate, cfg.ebml.enabled);
+    }
+
+    /** @param ebml false: EBML sayfası ve sütunları yazılmaz (veritabanından üretilen raporlar) */
+    public ExcelReportWriter(Config cfg, Date scanDate, boolean ebml) {
         this.cfg = cfg;
         this.scanDate = scanDate;
+        this.ebml = ebml;
     }
 
     public void write(Path file, String title, List<RepoResult> results) throws IOException {
@@ -67,7 +74,7 @@ public final class ExcelReportWriter {
             messages(wb, st, results);
             if (swallowedSheet()) swallowed(wb, st, results);
             subclasses(wb, st, results);
-            if (cfg.ebml.enabled) ebmlFiles(wb, st, results);
+            if (ebml) ebmlFiles(wb, st, results);
             errors(wb, st, results);
 
             // Detaylar ilk açılışta görünsün: Kullanımlar sayfası en başa alınır ve seçili açılır
@@ -152,7 +159,7 @@ public final class ExcelReportWriter {
             }
         }
         row = kv(s, st, row, "Türeyen alt sınıf tanımları", subs);
-        if (cfg.ebml.enabled) {
+        if (ebml) {
             long all = 0;
             long[] perKind = new long[EBML_KINDS.length];
             for (int i = 0; i < EBML_KINDS.length; i++) {
@@ -179,7 +186,7 @@ public final class ExcelReportWriter {
             headers.add("Yutulan Exception");
             widths.add(12);
         }
-        if (cfg.ebml.enabled) {
+        if (ebml) {
             for (EbmlFile.Kind k : EBML_KINDS) {
                 headers.add(k.label);
                 widths.add(12);
@@ -207,7 +214,7 @@ public final class ExcelReportWriter {
             num(x, c++, r.usages.size());
             for (String n : names) num(x, c++, r.count(n));
             if (swallowedSheet()) num(x, c++, r.swallowed.size());
-            if (cfg.ebml.enabled) {
+            if (ebml) {
                 for (EbmlFile.Kind k : EBML_KINDS) num(x, c++, r.count(k));
             }
             num(x, c++, r.subclasses.size());

@@ -198,6 +198,8 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
 | `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
 | `env.swallowed_exceptions` | Hata yutan catch blokları; `catch_kind` nasıl yuttuğunu gösterir: `EMPTY` (gövde boş veya sadece yorum), `LOG_ONLY` (sadece log, ör. `log.error("x", e)`, `e.printStackTrace()`), `LOG_AND_RETURN` (log ve ardından `return`), `RETURN_ONLY` (log olmadan sadece `return`: `null`, `false`, `""`, `EMPTY`, `return;` ...). Dönen değer hatayı çağırana taşıyorsa (yakalanan değişken ifadede geçiyor, ör. `return handle(ex)`; `...Exception` tipi oluşturuluyor; ya da metodun dönüş tipi exception) yutma sayılmaz). Log sayılan nesne adları `scan.swallowed.log.names` ile verilir. `class_id` / `method_id` kullanımlardaki gibi eşleştirilir. `report.excel` ve `report.swallowed` ayarlarından bağımsız olarak `db.enabled=true` ile yazılır. Kapsamı `scan.swallowed.scope` belirler: `TARGET` (varsayılan) aranan exception'ı yakalayanlar, `ALL` tipine bakmadan hepsi (`catch (Exception e) { }` dahil; aranan sınıf geçmeyen dosyalar da ayrıştırıldığı için tarama uzar), `OFF` hiçbiri |
+| `env.exception_scan_repo` | Her taramada taranan her repo için bir satır (bulgu çıkmasa da): dal, commit, `status` (`SCANNED`, `CLONE_FAILED`, `SCAN_FAILED`) ve sayılar (Java dosyası, kullanım, yutulan exception, `custom_exception_class_count`, hata, süreler). Rapor API'si bir reponun en son taramasını buradan bulur |
+| `env.custom_exception_classes` | Aranan exception'lardan doğrudan veya dolaylı türeyen sınıflar, tanımlandıkları repoyla (Excel'deki "Alt Sınıflar") |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |
 | `env.v_exception_usage_summary` | Son tarama, proje ve tipe göre sayılar |
 | `env.v_exception_usage_trend` | Taramadan taramaya sayıların değişimi |
@@ -334,6 +336,8 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 | `GET /api/scans/{id}/report` | Ana Excel raporu |
 | `GET /api/scans/{id}/files`, `.../files/download?path=...` | Proje bazlı raporlar ve tarama logu |
 | `DELETE /api/scans/{id}` | Sıradaki taramayı iptal eder veya biten taramayı raporlarıyla siler |
+| `GET /api/reports/repos?project=A` | Projenin en son taramadaki repoları ve sayıları (`&scanRunId=42` ile belirli bir tarama); veritabanından |
+| `GET /api/reports/excel?project=A&repo=A3` | Repo bazlı Excel raporu; `repo` verilmezse projenin tüm repoları. Rapor istendiği anda veritabanından üretilir, bkz. [Veritabanından rapor](#veritabanından-rapor) |
 | `GET /api/settings` | Sunucudaki temel ayarlar (token ve şifreler maskeli) |
 | `/actuator/health/liveness`, `/actuator/health/readiness` | Sağlık kontrolleri |
 
@@ -352,6 +356,28 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 ```
 
 Taramalar sırayla çalışır (aynı anda tek tarama isteği); sonradan gelenler sırada bekler. Bir taramanın içindeki projeler ve repolar ise paralel işlenir (bkz. [Paralel işleme](#paralel-işleme)). Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
+
+### Veritabanından rapor
+
+Tarama bittikten sonra bir projenin veya tek bir reponun Excel raporu istendiğinde veritabanındaki kayıtlardan üretilir; tarama sırasında repo başına dosya yazılmaz. `db.enabled=true` ile yapılmış taramalar için çalışır (otomatik tarama, Swagger veya komut satırı fark etmez).
+
+```
+GET /api/reports/excel?project=A&repo=A3                → A3'ün başarıyla tarandığı en son tarama
+GET /api/reports/excel?project=A                        → A projesinin en son taramadaki tüm repoları
+GET /api/reports/excel?project=A&repo=A3&scanRunId=42   → belirli bir tarama (env.exception_scan_run.id)
+GET /api/reports/repos?project=A                        → ekranda listelemek için repolar ve sayıları
+```
+
+Excel'in biçimi tarama sonundaki raporla aynıdır (Kullanımlar, Özet, Mesajlar, Yutulan Exception'lar, Alt Sınıflar, Tarama Hataları). Farklar: EBML sayfası yoktur; `db.insert.unmatched=false` ile atlanan kayıtlar raporda da yoktur.
+
+Gerekenler: `env.exception_scan_repo` ve `env.custom_exception_classes` tabloları, `env.exception_usage.message_kind` (Mesajlar sayfası için) ve `env.swallowed_exceptions.module` sütunları. Mevcut veritabanında bunları SQL dosyasındaki ilgili `CREATE TABLE` blokları ve şu komutlarla ekleyin:
+
+```sql
+ALTER TABLE env.exception_usage ADD COLUMN message_kind varchar(30);
+ALTER TABLE env.swallowed_exceptions ADD COLUMN module varchar(300);
+```
+
+Sütunlar yoksa tarama yine yazılır; raporda Mesajlar sayfası ve yutulan exception'ların modülü boş kalır. Tablolar eklenmeden önce yapılmış taramaların raporu alınamaz.
 
 ### Günlük otomatik tarama
 

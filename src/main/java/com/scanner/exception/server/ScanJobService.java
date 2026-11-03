@@ -231,6 +231,46 @@ class ScanJobService {
         return out;
     }
 
+    /** Veritabanındaki bir taramadan üretilen Excel raporu */
+    record GeneratedReport(String fileName, byte[] content) { }
+
+    /**
+     * Proje veya repo bazlı Excel raporunu veritabanındaki tarama sonuçlarından üretir.
+     * scanRunId verilmezse projenin (repo verildiyse o reponun başarıyla tarandığı) en son taraması kullanılır.
+     */
+    GeneratedReport dbReport(String project, String repo, Long scanRunId) throws IOException, java.sql.SQLException {
+        Config cfg = dbConfig();
+        com.scanner.exception.db.DbReportReader.Report report =
+                new com.scanner.exception.db.DbReportReader(cfg).read(project, repo, scanRunId);
+        boolean oneRepo = repo != null && !repo.isEmpty();
+        String scope = oneRepo ? report.results.get(0).repo.id() : report.results.get(0).repo.projectKey;
+        String fileName = "report_" + com.scanner.exception.repo.GitRunner.safe(scope.replace('/', '_'))
+                + "_" + report.scanRunId + ".xlsx";
+        Path tmp = Files.createTempFile("scan-report-", ".xlsx");
+        try {
+            new com.scanner.exception.report.ExcelReportWriter(cfg, java.util.Date.from(report.startedAt), false)
+                    .write(tmp, "Exception Kullanım Taraması - " + scope + " (scan_run_id=" + report.scanRunId + ")",
+                            report.results);
+            return new GeneratedReport(fileName, Files.readAllBytes(tmp));
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+    /** Projenin bir taramadaki (verilmezse en son taramadaki) repoları ve sayıları */
+    List<com.scanner.exception.db.DbReportReader.RepoRow> dbRepos(String project, Long scanRunId)
+            throws IOException, java.sql.SQLException {
+        return new com.scanner.exception.db.DbReportReader(dbConfig()).repos(project, scanRunId);
+    }
+
+    private Config dbConfig() throws IOException {
+        Config cfg = defaultConfig();
+        if (!cfg.db.enabled) {
+            throw new IllegalArgumentException("Rapor veritabanından üretilir: scanner.properties içinde db.enabled=true olmalı");
+        }
+        return cfg;
+    }
+
     /** Boş istekle (otomatik taramadaki gibi) yapılacak taramanın ayarları */
     Config defaultConfig() throws IOException {
         return Config.load(baseConfig(), overrides(emptyRequest()));

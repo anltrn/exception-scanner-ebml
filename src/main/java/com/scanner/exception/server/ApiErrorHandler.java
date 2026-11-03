@@ -34,6 +34,11 @@ class ApiErrorHandler {
         return problem(HttpStatus.CONFLICT, "Çakışma", e.getMessage());
     }
 
+    @ExceptionHandler(java.sql.SQLException.class)
+    ProblemDetail database(java.sql.SQLException e) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Veritabanı hatası", e.getMessage());
+    }
+
     @ExceptionHandler(IOException.class)
     ProblemDetail io(IOException e) {
         // Config.load ayar dosyası bulunamadığında / okunamadığında IOException atar

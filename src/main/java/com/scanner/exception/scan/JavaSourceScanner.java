@@ -255,7 +255,7 @@ public final class JavaSourceScanner {
         });
     }
 
-    static boolean isTestPath(String rel) {
+    public static boolean isTestPath(String rel) {
         return TEST_PATH.matcher(rel).matches();
     }
 

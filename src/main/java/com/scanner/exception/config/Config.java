@@ -197,6 +197,10 @@ public final class Config {
         public final List<String> constructorNames;
         public final boolean insertUnmatched;
         public final String swallowedTable;
+        /** Taramada taranan her repo için bir satır (rapor API'si buradan okur) */
+        public final String repoTable;
+        /** Aranan exception'lardan türeyen sınıflar ("Alt Sınıflar" sayfası) */
+        public final String customExceptionTable;
         /** Boşsa tarama kaydına "21.10.2026 11:50:34 tarihli tarama" yazılır */
         public final String note;
         /** Varsayılan açıklamadaki saatin saat dilimi */
@@ -234,6 +238,9 @@ public final class Config {
             constructorNames = list(get(p, "db.method.constructor.names", "<init>,{class}"));
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));
             swallowedTable = ident(get(p, "db.swallowed.table", schema + ".swallowed_exceptions"), "db.swallowed.table");
+            repoTable = ident(get(p, "db.repo.table", schema + ".exception_scan_repo"), "db.repo.table");
+            customExceptionTable = ident(get(p, "db.custom.exception.table", schema + ".custom_exception_classes"),
+                    "db.custom.exception.table");
             note = get(p, "db.note", "");
             noteZone = java.time.ZoneId.of(get(p, "db.note.zone", "Europe/Istanbul"));
             deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");

@@ -115,6 +115,37 @@ class ScanController {
         return send(service.file(id, ScanJobService.MASTER_REPORT));
     }
 
+    @GetMapping("/api/reports/repos")
+    @Operation(summary = "Projenin repoları (veritabanından)",
+            description = "Projenin bir taramadaki repoları ve sayıları (env.exception_scan_repo). scanRunId verilmezse "
+                    + "projenin en son taraması. Excel için /api/reports/excel.")
+    List<com.scanner.exception.db.DbReportReader.RepoRow> reportRepos(
+            @Parameter(description = "Bitbucket proje anahtarı, ör. A") @RequestParam String project,
+            @Parameter(description = "env.exception_scan_run.id; boşsa en son tarama") @RequestParam(required = false) Long scanRunId)
+            throws IOException, java.sql.SQLException {
+        return service.dbRepos(project, scanRunId);
+    }
+
+    @GetMapping("/api/reports/excel")
+    @Operation(summary = "Proje veya repo bazlı Excel raporu (veritabanından)",
+            description = "Rapor istendiği anda veritabanındaki tarama sonuçlarından üretilir. repo verilirse sadece o repo, "
+                    + "verilmezse projenin tüm repoları. scanRunId verilmezse en son tarama (repo verildiyse o reponun "
+                    + "başarıyla tarandığı en son tarama).")
+    @ApiResponse(responseCode = "200", description = "Excel dosyası")
+    @ApiResponse(responseCode = "404", description = "Bu proje / repo için tarama yok")
+    ResponseEntity<byte[]> reportExcel(
+            @Parameter(description = "Bitbucket proje anahtarı, ör. A") @RequestParam String project,
+            @Parameter(description = "Projedeki repo, ör. A3; boşsa tüm proje") @RequestParam(required = false) String repo,
+            @Parameter(description = "env.exception_scan_run.id; boşsa en son tarama") @RequestParam(required = false) Long scanRunId)
+            throws IOException, java.sql.SQLException {
+        ScanJobService.GeneratedReport r = service.dbReport(project, repo, scanRunId);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(r.fileName(), StandardCharsets.UTF_8).build().toString())
+                .body(r.content());
+    }
+
     @GetMapping("/api/settings")
     @Operation(summary = "Sunucudaki temel ayarlar",
             description = "İstekte verilmeyen değerler için kullanılan scanner.properties. Token ve şifreler maskelenir.")

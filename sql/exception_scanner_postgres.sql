@@ -121,6 +121,7 @@ CREATE TABLE env.exception_usage (
     is_test          boolean      NOT NULL DEFAULT false,
     code_snippet     text,
     link             varchar(2000),
+    message_kind     varchar(30),                      -- STRING_LITERAL | STRING_CONCAT | STRING_FORMAT | EXCEPTION_MESSAGE
     created_at       timestamptz  NOT NULL DEFAULT now(),
 
     CONSTRAINT ck_exception_usage_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
@@ -148,6 +149,7 @@ COMMENT ON COLUMN env.exception_usage.usage_context IS 'Kullanımın bağlamı: 
 COMMENT ON COLUMN env.exception_usage.is_test IS 'Dosya test kodunda mı: yolunda src/test, test veya tests klasörü varsa true';
 COMMENT ON COLUMN env.exception_usage.code_snippet IS 'Kullanımın kaynak kodu (new ... ifadesi), boşluklar teke indirilmiş; 500 karakterden uzunsa kesilip sonuna ... eklenir';
 COMMENT ON COLUMN env.exception_usage.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
+COMMENT ON COLUMN env.exception_usage.message_kind IS 'message sütunundaki metnin koddaki şekli: STRING_LITERAL (String sabit), STRING_CONCAT (String birleştirme), STRING_FORMAT (String.format / MessageFormat), EXCEPTION_MESSAGE (başka exception''ın getMessage()''ı); mesaj argümanı yoksa boş. Rapor API''sinin Mesajlar sayfası bu sütunu kullanır';
 COMMENT ON COLUMN env.exception_usage.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
 CREATE INDEX ix_exception_usage_run    ON env.exception_usage (scan_run_id);
@@ -501,6 +503,7 @@ CREATE TABLE env.swallowed_exceptions (
     exception_class  varchar(300),                     -- yakalanan exception: CSException (multi-catch'te A | B)
     catch_kind       varchar(20)  NOT NULL,            -- EMPTY | LOG_ONLY | LOG_AND_RETURN | RETURN_ONLY
     link             varchar(2000),
+    module           varchar(300),
     created_at       timestamptz  NOT NULL DEFAULT now(),
 
     CONSTRAINT ck_swallowed_exceptions_method_needs_class CHECK (method_id IS NULL OR class_id IS NOT NULL)
@@ -522,8 +525,96 @@ COMMENT ON COLUMN env.swallowed_exceptions.method_signature IS 'Catch bloğunun 
 COMMENT ON COLUMN env.swallowed_exceptions.exception_class IS 'Yakalanan exception sınıfının koddaki adı. scan.swallowed.scope=TARGET ise aranan sınıf veya repoda ondan türeyen alt sınıf (ör. CSException), multi-catch''te sadece aranan sınıflar; ALL ise yakalanan tüm tipler (ör. Exception, IOException). Birden fazla tip " | " ile ayrılır';
 COMMENT ON COLUMN env.swallowed_exceptions.catch_kind IS 'Hatanın nasıl yutulduğu: EMPTY (gövde boş veya sadece yorum), LOG_ONLY (gövdede sadece log çağrıları var, ör. log.error("x", e) veya e.printStackTrace()), LOG_AND_RETURN (log çağrılarından sonra return, ör. log.error(...); return null;), RETURN_ONLY (log olmadan sadece return, ör. return null, return false, return "", return EMPTY, return;). İki return türünde de dönen değer hatayı çağırana taşıyorsa kayıt yazılmaz: yakalanan değişken (adı ne olursa olsun: e, ex, t) ifadede geçiyorsa (return handle(ex), return new HataCevabi(ex.getMessage())), adı Exception/Error/Throwable ile biten bir tip oluşturuluyorsa (return new BusinessException("x")) veya catch''in bulunduğu metodun dönüş tipi böyleyse. Log çağrısı sayılanlar: printStackTrace, System.out/err, adı scan.swallowed.log.names''te olan (varsayılan log, logger) veya logger ile biten nesnelerin metotları, getLogger()/getLog() sonucunun metotları, log ile başlayan nesnesiz çağrılar (logError(e)) ve sadece log içeren if blokları';
 COMMENT ON COLUMN env.swallowed_exceptions.link IS 'Dosyayı ilgili satırda açan Bitbucket (source=GIT ise GitHub/GitLab) bağlantısı, taranan commit''e sabitlenmiş; source=LOCAL veya bağlantı üretilemeyen git adreslerinde boş';
+COMMENT ON COLUMN env.swallowed_exceptions.module IS 'Catch bloğunun bulunduğu modül (Maven/Gradle modül klasörü); tek modüllü projelerde (kök)';
 COMMENT ON COLUMN env.swallowed_exceptions.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
 
 CREATE INDEX ix_swallowed_exceptions_run ON env.swallowed_exceptions (scan_run_id);
 CREATE INDEX ix_swallowed_exceptions_class ON env.swallowed_exceptions (class_id);
 CREATE INDEX ix_swallowed_exceptions_method ON env.swallowed_exceptions (method_id);
+
+
+-- ---------------------------------------------------------------------
+--  Taranan repolar: her taramada taranan her repo için bir satır,
+--  bulgu çıkmasa da yazılır. Rapor API'si (/api/reports/excel) bir
+--  reponun en son taramasını ve özet sayılarını buradan okur.
+-- ---------------------------------------------------------------------
+CREATE TABLE env.exception_scan_repo (
+    id                           bigserial    PRIMARY KEY,
+    scan_run_id                  bigint       NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    project_key                  varchar(100) NOT NULL,
+    project_name                 varchar(300),
+    repo                         varchar(200) NOT NULL,
+    branch                       varchar(200),
+    commit_id                    varchar(64),
+    status                       varchar(20)  NOT NULL,             -- SCANNED | CLONE_FAILED | SCAN_FAILED
+    java_file_count              integer,
+    target_file_count            integer,
+    parse_failure_count          integer,
+    usage_count                  integer,
+    swallowed_error_count        integer,
+    custom_exception_class_count integer,
+    error_count                  integer,
+    clone_seconds                integer,
+    scan_seconds                 integer,
+    created_at                   timestamptz  NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_exception_scan_repo UNIQUE (scan_run_id, project_key, repo)
+);
+
+COMMENT ON TABLE  env.exception_scan_repo IS 'Taranan repolar: her taramada taranan her repo için bir satır, bulgu çıkmasa da yazılır. Bir reponun en son ne zaman tarandığı, temiz mi çıktığı yoksa taranamadı mı bu tablodan anlaşılır; rapor API''si (/api/reports/excel, /api/reports/repos) buradan okur';
+COMMENT ON COLUMN env.exception_scan_repo.id IS 'Kayıt numarası (otomatik artan)';
+COMMENT ON COLUMN env.exception_scan_repo.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
+COMMENT ON COLUMN env.exception_scan_repo.project_key IS 'Reponun projesi: Bitbucket proje anahtarı (ör. A); source=GIT için adresteki sahip, source=LOCAL için klasör yapısından çıkarılan proje adı';
+COMMENT ON COLUMN env.exception_scan_repo.project_name IS 'Projenin görünen adı (Bitbucket''taki proje adı)';
+COMMENT ON COLUMN env.exception_scan_repo.repo IS 'Projedeki repo: slug (Bitbucket/git adresindeki repo adı, ör. A3); diğer tablolardaki repo sütunuyla aynı değer';
+COMMENT ON COLUMN env.exception_scan_repo.branch IS 'Taranan dal';
+COMMENT ON COLUMN env.exception_scan_repo.commit_id IS 'Taranan commit; iki tarama arasında kodun değişip değişmediği buradan görülür';
+COMMENT ON COLUMN env.exception_scan_repo.status IS 'SCANNED (tarandı; bulgu olmayabilir), CLONE_FAILED (klonlanamadı, taranmadı), SCAN_FAILED (taranırken hata, bellek yetmedi veya dosyalar listelenemedi; ayrıntı env.exception_scan_error''da)';
+COMMENT ON COLUMN env.exception_scan_repo.java_file_count IS 'Repodaki .java dosyası sayısı (scan.exclude.dirs hariç)';
+COMMENT ON COLUMN env.exception_scan_repo.target_file_count IS 'Aranan exception sınıflarından birinin adı geçen dosya sayısı';
+COMMENT ON COLUMN env.exception_scan_repo.parse_failure_count IS 'Ayrıştırılamayan veya okunamayan dosya sayısı';
+COMMENT ON COLUMN env.exception_scan_repo.usage_count IS 'Repodan env.exception_usage''a yazılan kullanım sayısı';
+COMMENT ON COLUMN env.exception_scan_repo.swallowed_error_count IS 'Repodan env.swallowed_exceptions''a yazılan hata yutan catch bloğu sayısı; scan.swallowed.scope=OFF veya tablo yoksa boş';
+COMMENT ON COLUMN env.exception_scan_repo.custom_exception_class_count IS 'Aranan exception sınıflarından (exception.classes, ör. CustomException) doğrudan veya dolaylı türeyen ve bu repoda tanımlanan sınıf sayısı; aranan sınıfların kendisi sayılmaz. Sınıflar env.custom_exception_classes''ta';
+COMMENT ON COLUMN env.exception_scan_repo.error_count IS 'Repodaki tarama hatası sayısı (env.exception_scan_error)';
+COMMENT ON COLUMN env.exception_scan_repo.clone_seconds IS 'Klonlama / güncelleme süresi (saniye)';
+COMMENT ON COLUMN env.exception_scan_repo.scan_seconds IS 'Tarama süresi (saniye)';
+COMMENT ON COLUMN env.exception_scan_repo.created_at IS 'Kaydın eklendiği an (now()); aynı taramanın tüm kayıtlarında aynıdır';
+
+CREATE INDEX ix_exception_scan_repo_repo ON env.exception_scan_repo (lower(project_key), lower(repo), scan_run_id);
+
+
+-- ---------------------------------------------------------------------
+--  Aranan exception'lardan türeyen sınıflar (Excel'deki "Alt Sınıflar"
+--  sayfasının karşılığı); tanımlandıkları repoyla.
+-- ---------------------------------------------------------------------
+CREATE TABLE env.custom_exception_classes (
+    id           bigserial     PRIMARY KEY,
+    scan_run_id  bigint        NOT NULL REFERENCES env.exception_scan_run (id) ON DELETE CASCADE,
+    project_key  varchar(100),
+    repo         varchar(200),
+    module       varchar(300),
+    file_path    varchar(1000) NOT NULL,
+    line_no      integer       NOT NULL,
+    class_fqcn   varchar(1000) NOT NULL,
+    parent_fqcn  varchar(1000) NOT NULL,
+    is_test      boolean       NOT NULL DEFAULT false,
+    link         varchar(2000),
+    created_at   timestamptz   NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE  env.custom_exception_classes IS 'Aranan exception sınıflarından (exception.classes) doğrudan veya dolaylı türeyen sınıflar, tanımlandıkları repoyla. scan.global.hierarchy=true ise başka repolarda tanımlanan sınıflardan türeyenler de bulunur. exception.ignore.classes''taki sınıflar ve onlardan türeyenler yazılmaz';
+COMMENT ON COLUMN env.custom_exception_classes.id IS 'Kayıt numarası (otomatik artan)';
+COMMENT ON COLUMN env.custom_exception_classes.scan_run_id IS 'Kaydın ait olduğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
+COMMENT ON COLUMN env.custom_exception_classes.project_key IS 'Sınıfın tanımlandığı reponun projesi (Bitbucket proje anahtarı)';
+COMMENT ON COLUMN env.custom_exception_classes.repo IS 'Sınıfın tanımlandığı repo (slug)';
+COMMENT ON COLUMN env.custom_exception_classes.module IS 'Sınıfın bulunduğu modül (Maven/Gradle modül klasörü); tek modüllü projelerde (kök)';
+COMMENT ON COLUMN env.custom_exception_classes.file_path IS 'Sınıfın tanımlandığı .java dosyasının repo içindeki yolu';
+COMMENT ON COLUMN env.custom_exception_classes.line_no IS 'Sınıf tanımının başladığı satır';
+COMMENT ON COLUMN env.custom_exception_classes.class_fqcn IS 'Sınıfın paketle birlikte tam adı; iç sınıflar nokta ile (ör. a.b.Dis.IcException)';
+COMMENT ON COLUMN env.custom_exception_classes.parent_fqcn IS 'Sınıfın extends ettiği sınıfın tam adı (aranan sınıf veya ondan türeyen başka bir sınıf)';
+COMMENT ON COLUMN env.custom_exception_classes.is_test IS 'Sınıf test kodunda mı (src/test, test, tests klasörleri)';
+COMMENT ON COLUMN env.custom_exception_classes.link IS 'Sınıf tanımını Bitbucket''ta açan bağlantı, taranan commit''e sabitlenmiş';
+COMMENT ON COLUMN env.custom_exception_classes.created_at IS 'Kaydın eklendiği an (now()); aynı taramanın tüm kayıtlarında aynıdır';
+
+CREATE INDEX ix_custom_exception_classes_run ON env.custom_exception_classes (scan_run_id);

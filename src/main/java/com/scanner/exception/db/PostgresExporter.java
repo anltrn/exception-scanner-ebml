@@ -5,6 +5,7 @@ import com.scanner.exception.model.CatchFinding;
 import com.scanner.exception.model.EbmlFile;
 import com.scanner.exception.model.RepoResult;
 import com.scanner.exception.model.ScanError;
+import com.scanner.exception.model.SubclassFinding;
 import com.scanner.exception.model.UsageFinding;
 import com.scanner.exception.scan.UsagePattern;
 
@@ -157,6 +158,12 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public final Map<String, Integer> swallowedByKind = new java.util.TreeMap<String, Integer>();
         /** false: tarama tablosunda swallowed_error_count sütunu yok, sayı yazılmadı */
         public boolean swallowedCountWritten;
+        /** env.exception_scan_repo'ya yazılan repo sayısı; tablo yoksa -1 */
+        public int repos;
+        /** env.custom_exception_classes'a yazılan sınıf sayısı; tablo yoksa -1 */
+        public int customExceptions;
+        /** false: kullanım tablosunda message_kind sütunu yok, mesaj tipi yazılmadı */
+        public boolean messageKindWritten;
         /** Mevcut ekran / popup / rapor / process tablolarındaki project_id güncellemesinin özeti */
         public final List<String> existing = new ArrayList<String>();
     }
@@ -172,10 +179,14 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             InsertResult ir = new InsertResult();
             ir.runId = insertRun(results, startedAt);
 
+            // Sütun sonradan eklendi: rapor API'sinin "Mesajlar" sayfası için gerekir
+            boolean messageKind = hasColumn(db.usageTable, "message_kind");
+            ir.messageKindWritten = messageKind;
             String sql = "INSERT INTO " + db.usageTable + " (scan_run_id, class_id, method_id, usage_type_code,"
                     + " match_status, match_note, project_key, repo, module, file_path, line_no, class_fqcn,"
                     + " method_signature, exception_class, error_code, message, usage_context, is_test,"
-                    + " code_snippet, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                    + " code_snippet, link" + (messageKind ? ", message_kind" : "")
+                    + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (messageKind ? ",?" : "") + ")";
             PreparedStatement ps = con.prepareStatement(sql);
             try {
                 int pending = 0;
@@ -208,6 +219,7 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                         ps.setBoolean(i++, u.testCode);
                         ps.setString(i++, u.expression);
                         ps.setString(i++, cut(u.link, 2000));
+                        if (messageKind) ps.setString(i++, u.messageKind == null ? null : u.messageKind.name());
                         ps.addBatch();
                         ir.inserted++;
                         if (++pending >= BATCH) {
@@ -225,6 +237,8 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             if (cfg.ebml.enabled && cfg.ebml.updateExisting) updateExisting(results, ir);
             ir.errors = insertErrors(results, ir.runId);
             insertSwallowed(results, ir);
+            insertRepos(results, ir);
+            insertCustomExceptions(results, ir);
 
             // Sütun sonradan eklendi: SQL dosyasının eski sürümüyle kurulan tabloda yoksa yazılmaz
             boolean catchCount = ir.swallowed >= 0 && hasColumn(db.runTable, "swallowed_error_count");
@@ -691,9 +705,12 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             ir.swallowed = -1;
             return;
         }
+        // Sütun sonradan eklendi: rapor API'sinin "Yutulan Exception'lar" sayfasındaki modül için
+        boolean module = hasColumn(db.swallowedTable, "module");
         PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.swallowedTable
                 + " (scan_run_id, class_id, method_id, match_status, match_note, project_key, repo, file_path, line_no,"
-                + " class_fqcn, method_signature, exception_class, catch_kind, link) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                + " class_fqcn, method_signature, exception_class, catch_kind, link" + (module ? ", module" : "")
+                + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (module ? ",?" : "") + ")");
         try {
             int pending = 0;
             for (RepoResult r : results) {
@@ -717,9 +734,110 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                     ps.setString(i++, cut(c.caughtTypes, 300));
                     ps.setString(i++, c.swallowKind.name());
                     ps.setString(i++, cut(c.link, 2000));
+                    if (module) ps.setString(i++, cut(c.module, 300));
                     ir.swallowedByKind.merge(c.swallowKind.name(), 1, Integer::sum);
                     ps.addBatch();
                     ir.swallowed++;
+                    if (++pending >= BATCH) {
+                        ps.executeBatch();
+                        pending = 0;
+                    }
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+    }
+
+    /** Taranan her repo için bir satır: sayılar, dal / commit ve durum (bulgusu olmayan repolar da yazılır) */
+    private void insertRepos(List<RepoResult> results, InsertResult ir) throws SQLException {
+        if (!exists(db.repoTable)) {
+            ir.repos = -1;
+            return;
+        }
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.repoTable
+                + " (scan_run_id, project_key, project_name, repo, branch, commit_id, status, java_file_count,"
+                + " target_file_count, parse_failure_count, usage_count, swallowed_error_count,"
+                + " custom_exception_class_count, error_count, clone_seconds, scan_seconds)"
+                + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        try {
+            for (RepoResult r : results) {
+                int i = 1;
+                ps.setLong(i++, ir.runId);
+                ps.setString(i++, cut(r.repo.projectKey, 100));
+                ps.setString(i++, cut(r.repo.projectName, 300));
+                ps.setString(i++, cut(r.repo.slug, 200));
+                ps.setString(i++, cut(r.repo.branch, 200));
+                ps.setString(i++, cut(r.repo.commit, 64));
+                ps.setString(i++, repoStatus(r));
+                ps.setInt(i++, r.javaFiles);
+                ps.setInt(i++, r.filesMentioningTarget);
+                ps.setInt(i++, r.parseFailures);
+                ps.setInt(i++, countWritten(r.usages));
+                if (ir.swallowed < 0) ps.setNull(i++, Types.INTEGER);
+                else ps.setInt(i++, countWritten(r.swallowed));
+                ps.setInt(i++, r.subclasses.size());
+                ps.setInt(i++, r.errors.size());
+                ps.setInt(i++, (int) (r.repo.cloneMillis / 1000));
+                ps.setInt(i++, (int) (r.repo.scanMillis / 1000));
+                ps.addBatch();
+                ir.repos++;
+            }
+            ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+    }
+
+    /** SCANNED; repo klonlanamadıysa CLONE_FAILED, taranamadıysa SCAN_FAILED */
+    static String repoStatus(RepoResult r) {
+        for (ScanError e : r.errors) {
+            if (e.stage == ScanError.Stage.CLONE) return "CLONE_FAILED";
+        }
+        for (ScanError e : r.errors) {
+            if (e.stage == ScanError.Stage.SCAN || e.stage == ScanError.Stage.OUT_OF_MEMORY
+                    || e.stage == ScanError.Stage.FILE_LISTING) return "SCAN_FAILED";
+        }
+        return "SCANNED";
+    }
+
+    /** Tabloya yazılan bulgu sayısı (db.insert.unmatched=false ise sınıfı bulunamayanlar sayılmaz) */
+    private int countWritten(List<? extends com.scanner.exception.model.Located> findings) {
+        if (db.insertUnmatched) return findings.size();
+        int n = 0;
+        for (com.scanner.exception.model.Located l : findings) {
+            if (!DbMatcher.CLASS_NOT_FOUND.equals(l.matchStatus)) n++;
+        }
+        return n;
+    }
+
+    /** Aranan exception'lardan (doğrudan veya dolaylı) türeyen sınıflar, tanımlandıkları repoyla */
+    private void insertCustomExceptions(List<RepoResult> results, InsertResult ir) throws SQLException {
+        if (!exists(db.customExceptionTable)) {
+            ir.customExceptions = -1;
+            return;
+        }
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + db.customExceptionTable
+                + " (scan_run_id, project_key, repo, module, file_path, line_no, class_fqcn, parent_fqcn, is_test, link)"
+                + " VALUES (?,?,?,?,?,?,?,?,?,?)");
+        try {
+            int pending = 0;
+            for (RepoResult r : results) {
+                for (SubclassFinding s : r.subclasses) {
+                    int i = 1;
+                    ps.setLong(i++, ir.runId);
+                    ps.setString(i++, cut(s.projectKey, 100));
+                    ps.setString(i++, cut(s.repo, 200));
+                    ps.setString(i++, cut(s.module, 300));
+                    ps.setString(i++, cut(s.file, 1000));
+                    ps.setInt(i++, s.line);
+                    ps.setString(i++, cut(s.className, 1000));
+                    ps.setString(i++, cut(s.parent, 1000));
+                    ps.setBoolean(i++, s.testCode);
+                    ps.setString(i++, cut(s.link, 2000));
+                    ps.addBatch();
+                    ir.customExceptions++;
                     if (++pending >= BATCH) {
                         ps.executeBatch();
                         pending = 0;
