@@ -250,6 +250,9 @@ public final class Config {
         public final String swallowedTable;
         /** Taramada taranan her repo için bir satır (rapor API'si buradan okur) */
         public final String repoTable;
+        /** Kod karmaşıklığı: metot bazlı risk ve kopya / benzer kod grupları (complexity.enabled=true ile) */
+        public final String methodRiskTable;
+        public final String methodSimilarityTable;
         /** Boşsa tarama kaydına "21.10.2026 11:50:34 tarihli tarama" yazılır */
         public final String note;
         /** Varsayılan açıklamadaki saatin saat dilimi */
@@ -288,6 +291,9 @@ public final class Config {
             insertUnmatched = Boolean.parseBoolean(get(p, "db.insert.unmatched", "true"));
             swallowedTable = ident(get(p, "db.swallowed.table", schema + ".swallowed_exceptions"), "db.swallowed.table");
             repoTable = ident(get(p, "db.repo.table", schema + ".exception_scan_repo"), "db.repo.table");
+            methodRiskTable = ident(get(p, "db.method.risk.table", schema + ".method_risk_analyze"), "db.method.risk.table");
+            methodSimilarityTable = ident(get(p, "db.method.similarity.table", schema + ".method_similarity"),
+                    "db.method.similarity.table");
             note = get(p, "db.note", "");
             noteZone = java.time.ZoneId.of(get(p, "db.note.zone", "Europe/Istanbul"));
             deepScanTable = ident(get(p, "db.deep.scan.table", schema + ".scan_run"), "db.deep.scan.table");

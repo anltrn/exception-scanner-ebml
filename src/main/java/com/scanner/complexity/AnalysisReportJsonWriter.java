@@ -360,7 +360,7 @@ public final class AnalysisReportJsonWriter {
     }
 
     /** Host uygulamasının DB {@code risk_inputs_json} alanına map edebileceği özet (JDBC bu repoda yok). */
-    private static void writeRiskInputs(JsonWriter w, MethodMetric m, String analyzedPath, String profileVersion,
+    static void writeRiskInputs(JsonWriter w, MethodMetric m, String analyzedPath, String profileVersion,
                                         String pipeline) throws IOException {
         w.name("riskInputs");
         w.beginObject();

@@ -24,7 +24,11 @@ public final class ComplexityRunner {
     public enum Engine { PARSER, PMD, BOTH }
 
     /** Bir yolun sonucu */
-    public record Result(String engine, AnalysisReport.Summary summary, Path json, Path markdown) { }
+    public record Result(String engine, AnalysisReport report, Path json, Path markdown) {
+        public AnalysisReport.Summary summary() {
+            return report.summary();
+        }
+    }
 
     private static final String RULESET_RESOURCE = "/config/pmd-ruleset-complexity.xml";
 
@@ -81,7 +85,7 @@ public final class ComplexityRunner {
                 StandaloneReportMarkdown.write(report, w);
             }
         }
-        return new Result(engine, report.summary(), json, cfg.markdown ? md : null);
+        return new Result(engine, report, json, cfg.markdown ? md : null);
     }
 
     private ScanOptions options(boolean fullDetail) {

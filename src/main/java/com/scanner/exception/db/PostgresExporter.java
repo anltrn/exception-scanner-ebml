@@ -873,6 +873,224 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
     }
 
     // =====================================================================
+    //  Kod karmaşıklığı (env.method_risk_analyze, env.method_similarity)
+    // =====================================================================
+
+    /** Bir reponun bir analiz yolunun (parser / PMD) kayıt sonucu */
+    public static final class ComplexityInsert {
+        /** Yazılan metot sayısı; tablo yoksa veya uyumsuzsa -1 */
+        public int methods;
+        /** java_method_id'si bulunan metot sayısı */
+        public int methodsMatched;
+        /** Yazılan kopya / benzer kod grubu sayısı; tablo yoksa veya uyumsuzsa -1 */
+        public int groups;
+        /** Yazılamadıysa nedeni (tablo yok, scan_run_id tipi uyumsuz) */
+        public final List<String> warnings = new ArrayList<String>();
+    }
+
+    /** Analizdeki metot: sınıf / metot envanteriyle (java_method_id) eşleştirmek için */
+    private static final class AnalyzedMethod extends com.scanner.exception.model.Located {
+        private static final long serialVersionUID = 1L;
+    }
+
+    /**
+     * Bir reponun karmaşıklık analizini scanRunId'li taramaya bağlı yazar (tek transaction). Metotlar
+     * env.java_class / env.java_method ile eşleştirilip java_method_id doldurulur. Tablolarda project_key ve
+     * repo sütunları varsa onlar da yazılır (aynı taramadaki repoları ayırmak için gerekir).
+     */
+    public ComplexityInsert insertComplexity(long scanRunId, com.scanner.exception.model.RepoInfo repo,
+                                             com.scanner.complexity.AnalysisReport report) throws Exception {
+        ComplexityInsert ci = new ComplexityInsert();
+        boolean parser = !"pmd-native".equals(com.scanner.complexity.ComplexityJson.pipeline(report));
+        try {
+            ci.methods = insertMethodRisks(scanRunId, repo, report, parser, ci);
+            ci.groups = insertSimilarities(scanRunId, repo, report, parser, ci);
+            con.commit();
+            return ci;
+        } catch (SQLException e) {
+            rollbackQuietly();
+            throw unwrap(e);
+        } catch (RuntimeException e) {
+            rollbackQuietly();
+            throw e;
+        }
+    }
+
+    /** scan_run_id env.exception_scan_run.id'ye (bigint) bağlanır; başka tipteyse (ör. uuid) yazılmaz */
+    private boolean usable(String table, ComplexityInsert ci) throws SQLException {
+        if (!exists(table)) {
+            ci.warnings.add(table + " tablosu yok, yazılmadı");
+            return false;
+        }
+        String type = columnType(table, "scan_run_id");
+        if (!"bigint".equals(type)) {
+            ci.warnings.add(table + ".scan_run_id sütunu " + type + "; " + db.runTable + ".id'ye bağlanması için bigint "
+                    + "olmalı, yazılmadı (bkz. README: Kod karmaşıklığı analizi)");
+            return false;
+        }
+        return true;
+    }
+
+    private int insertMethodRisks(long scanRunId, com.scanner.exception.model.RepoInfo repo,
+                                  com.scanner.complexity.AnalysisReport report, boolean parser, ComplexityInsert ci)
+            throws Exception {
+        String table = db.methodRiskTable;
+        if (!usable(table, ci)) return -1;
+        boolean repoColumns = hasColumn(table, "project_key") && hasColumn(table, "repo");
+
+        // Önce envanterle eşleştirme (iki sorguda), sonra yazma
+        List<com.scanner.complexity.AnalysisReport.FileMetric> files = report.files();
+        List<AnalyzedMethod> refs = new ArrayList<AnalyzedMethod>();
+        for (com.scanner.complexity.AnalysisReport.FileMetric f : files) {
+            for (com.scanner.complexity.AnalysisReport.ClassMetric c : f.classes()) {
+                for (com.scanner.complexity.MethodMetric m : c.methods()) refs.add(analyzedMethod(f, c, m));
+            }
+        }
+        if (!refs.isEmpty()) new DbMatcher(db.caseInsensitive, db.constructorNames).resolveAll(refs, this);
+
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + table
+                + " (scan_run_id, method_uid, file_path, class_name, method_signature, start_line, end_line, is_parser,"
+                + " is_pmd, ncss_loc, risk_score, risk_level, risk_inputs_json, body_hash, structural_hash, java_method_id,"
+                + " created_at" + (repoColumns ? ", project_key, repo" : "")
+                + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,now()" + (repoColumns ? ",?,?" : "") + ")");
+        int count = 0;
+        try {
+            int pending = 0;
+            int k = 0;
+            for (com.scanner.complexity.AnalysisReport.FileMetric f : files) {
+                for (com.scanner.complexity.AnalysisReport.ClassMetric c : f.classes()) {
+                    for (com.scanner.complexity.MethodMetric m : c.methods()) {
+                        AnalyzedMethod ref = refs.get(k++);
+                        int i = 1;
+                        ps.setLong(i++, scanRunId);
+                        ps.setString(i++, com.scanner.complexity.ComplexityJson.methodUid(f.path(), c.name(), m));
+                        ps.setString(i++, f.path());
+                        ps.setString(i++, c.name());
+                        ps.setString(i++, m.signature());
+                        ps.setInt(i++, m.startLine());
+                        ps.setInt(i++, m.endLine());
+                        ps.setBoolean(i++, parser);
+                        ps.setBoolean(i++, !parser);
+                        ps.setInt(i++, m.codeLines());
+                        ps.setBigDecimal(i++, java.math.BigDecimal.valueOf(m.riskScore())
+                                .setScale(2, java.math.RoundingMode.HALF_UP));
+                        ps.setString(i++, m.riskLevel() == null ? null : m.riskLevel().name());
+                        ps.setString(i++, com.scanner.complexity.ComplexityJson.riskInputs(report, m));
+                        ps.setString(i++, m.bodyHash());
+                        ps.setString(i++, m.structuralHash());
+                        setLong(ps, i++, ref.dbMethodId);
+                        if (repoColumns) {
+                            ps.setString(i++, repo.projectKey);
+                            ps.setString(i, repo.slug);
+                        }
+                        if (ref.dbMethodId != null) ci.methodsMatched++;
+                        ps.addBatch();
+                        count++;
+                        if (++pending >= BATCH) {
+                            ps.executeBatch();
+                            pending = 0;
+                        }
+                    }
+                }
+            }
+            if (pending > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+        return count;
+    }
+
+    private int insertSimilarities(long scanRunId, com.scanner.exception.model.RepoInfo repo,
+                                   com.scanner.complexity.AnalysisReport report, boolean parser, ComplexityInsert ci)
+            throws SQLException {
+        String table = db.methodSimilarityTable;
+        if (!usable(table, ci)) return -1;
+        boolean repoColumns = hasColumn(table, "project_key") && hasColumn(table, "repo");
+        PreparedStatement ps = con.prepareStatement("INSERT INTO " + table
+                + " (scan_run_id, group_key, is_parser, is_pmd, similarity_type, similarity_percent, shared_ncss_lines,"
+                + " members_json, meta_json, created_at" + (repoColumns ? ", project_key, repo" : "")
+                + ") VALUES (?,?,?,?,?,?,?,?::jsonb,?::jsonb,now()" + (repoColumns ? ",?,?" : "") + ")");
+        int count = 0;
+        try {
+            for (com.scanner.complexity.AnalysisReport.DuplicateGroup g : report.duplicateGroups()) {
+                int i = 1;
+                ps.setLong(i++, scanRunId);
+                ps.setString(i++, g.groupId());
+                ps.setBoolean(i++, parser);
+                ps.setBoolean(i++, !parser);
+                ps.setString(i++, g.similarityType());
+                ps.setShort(i++, (short) Math.max(0, Math.min(Short.MAX_VALUE, g.similarityPercent())));
+                ps.setInt(i++, g.duplicatedLines());
+                ps.setString(i++, com.scanner.complexity.ComplexityJson.members(g));
+                ps.setString(i++, com.scanner.complexity.ComplexityJson.groupMeta(report, g));
+                if (repoColumns) {
+                    ps.setString(i++, repo.projectKey);
+                    ps.setString(i, repo.slug);
+                }
+                ps.addBatch();
+                count++;
+            }
+            if (count > 0) ps.executeBatch();
+        } finally {
+            ps.close();
+        }
+        return count;
+    }
+
+    /** "getRate(String, List<Long>)" -> getRate + [String, List<Long>]; sınıf adı paketle birleştirilir */
+    private static AnalyzedMethod analyzedMethod(com.scanner.complexity.AnalysisReport.FileMetric f,
+                                                 com.scanner.complexity.AnalysisReport.ClassMetric c,
+                                                 com.scanner.complexity.MethodMetric m) {
+        AnalyzedMethod a = new AnalyzedMethod();
+        String pkg = f.packageName() == null ? "" : f.packageName();
+        a.packageName = pkg;
+        a.className = pkg.isEmpty() ? c.name() : pkg + "." + c.name();
+        a.file = f.path();
+        List<String> params = new ArrayList<String>();
+        String sig = m.signature() == null ? "" : m.signature();
+        int open = sig.indexOf('(');
+        int close = sig.lastIndexOf(')');
+        if (open >= 0 && close > open) {
+            int depth = 0;
+            StringBuilder cur = new StringBuilder();
+            for (char ch : sig.substring(open + 1, close).toCharArray()) {
+                if (ch == '<') depth++;
+                if (ch == '>') depth--;
+                if (ch == ',' && depth == 0) {
+                    if (cur.toString().trim().length() > 0) params.add(cur.toString().trim());
+                    cur.setLength(0);
+                } else {
+                    cur.append(ch);
+                }
+            }
+            if (cur.toString().trim().length() > 0) params.add(cur.toString().trim());
+        }
+        boolean ctor = "CONSTRUCTOR".equalsIgnoreCase(m.kind());
+        a.memberRef = new com.scanner.exception.model.MemberRef(ctor
+                ? com.scanner.exception.model.MemberRef.Kind.CONSTRUCTOR : com.scanner.exception.model.MemberRef.Kind.METHOD,
+                m.name(), params);
+        return a;
+    }
+
+    /** Sütunun tipi (format_type), ör. bigint, uuid; sütun yoksa null */
+    private String columnType(String table, String column) throws SQLException {
+        PreparedStatement ps = con.prepareStatement("SELECT format_type(atttypid, atttypmod) FROM pg_attribute"
+                + " WHERE attrelid = to_regclass(?) AND attname = ? AND attnum > 0 AND NOT attisdropped");
+        try {
+            ps.setString(1, table);
+            ps.setString(2, column);
+            ResultSet rs = ps.executeQuery();
+            try {
+                return rs.next() ? rs.getString(1) : null;
+            } finally {
+                rs.close();
+            }
+        } finally {
+            ps.close();
+        }
+    }
+
+    // =====================================================================
     //  Yardımcılar
     // =====================================================================
 

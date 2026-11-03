@@ -339,12 +339,14 @@ public final class ScannerApp {
 
         // Raporlar yazılırken bağlantı açık tutulmaz (eşleştirme ve kayıt ayrı bağlantılarla yapılır):
         // açık kalan okuma transaction'ı env.java_class gibi tablolardaki TRUNCATE'leri bekletirdi.
+        Long scanRunId = null; // karmaşıklık analizi aynı tarama kaydına bağlanır
         if (resolved) {
             try (PostgresExporter pg = new PostgresExporter(cfg)) {
                 if (cfg.db.dryRun) {
                     log("Veritabanı: deneme modu (--db-dry-run), kayıt yapılmadı.");
                 } else {
                     PostgresExporter.InsertResult ir = pg.insert(results, startedAt);
+                    scanRunId = ir.runId;
                     log("Veritabanı: " + ir.inserted + " kullanım " + cfg.db.usageTable + " tablosuna yazıldı"
                             + " (scan_run_id=" + ir.runId + ")"
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");
@@ -404,7 +406,9 @@ public final class ScannerApp {
             log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor, %d process bulundu%s.", sc, pu, rg, rp, pr,
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
-        if (cfg.complexity.enabled) summary.put("complexityReports", analyzeComplexity(cfg, results, outDir.resolve("complexity")));
+        if (cfg.complexity.enabled) {
+            summary.put("complexityReports", analyzeComplexity(cfg, results, outDir.resolve("complexity"), scanRunId));
+        }
         summary.put("javaFiles", javaFiles);
         summary.put("usages", usages);
         summary.put("errors", errors);
@@ -448,8 +452,15 @@ public final class ScannerApp {
      * Exception taramasından sonra klonlanmış her repoda kod karmaşıklığı analizi yapar (complexity.enabled=true).
      * Her repo için complexity/<proje>/<repo>.json ve .md (PMD yolu için -pmd.json, -pmd.md, -pmd-violations.xml),
      * hepsinin özeti için complexity/summary.md yazılır. Bir reponun analizi hata verirse diğerleri devam eder.
+     * scanRunId varsa (tarama veritabanına yazıldıysa) sonuçlar env.method_risk_analyze ve env.method_similarity
+     * tablolarına da bu taramaya bağlı yazılır; her repo kendi transaction'ında.
      */
-    private static int analyzeComplexity(Config cfg, List<RepoResult> results, Path dir) {
+    private static int analyzeComplexity(Config cfg, List<RepoResult> results, Path dir, Long scanRunId) {
+        if (scanRunId == null && cfg.db.enabled) {
+            log("Uyarı: tarama veritabanına yazılmadığı için karmaşıklık sonuçları tablolara yazılmayacak, sadece dosyalara.");
+        }
+        java.util.Set<String> warned = new java.util.HashSet<String>();
+        long dbMethods = 0, dbMatched = 0, dbGroups = 0;
         log("Kod karmaşıklığı analizi başlıyor (complexity.engine=" + cfg.complexity.engine.name().toLowerCase(java.util.Locale.ROOT)
                 + "): " + results.size() + " repo");
         ComplexityRunner runner = new ComplexityRunner(cfg.complexity);
@@ -476,6 +487,20 @@ public final class ScannerApp {
                     log(String.format("[%d/%d] %s (%s): %d dosya, %d metot, proje riski %.1f (%s), %d yüksek / %d kritik metot (%s)",
                             done, results.size(), repo.id(), res.engine(), s.filesParsed(), s.methodCount(), s.projectRiskScore(),
                             s.projectRiskLevel(), high, critical, seconds(System.currentTimeMillis() - started)));
+                    if (scanRunId != null) {
+                        try (PostgresExporter pg = new PostgresExporter(cfg)) {
+                            PostgresExporter.ComplexityInsert ci = pg.insertComplexity(scanRunId, repo, res.report());
+                            for (String w : ci.warnings) if (warned.add(w)) log("Uyarı: " + w);
+                            if (ci.methods > 0) {
+                                dbMethods += ci.methods;
+                                dbMatched += ci.methodsMatched;
+                            }
+                            if (ci.groups > 0) dbGroups += ci.groups;
+                        } catch (Exception e) {
+                            log(String.format("[%d/%d] %s (%s): HATA: karmaşıklık sonuçları veritabanına yazılamadı: %s",
+                                    done, results.size(), repo.id(), res.engine(), e.getMessage()));
+                        }
+                    }
                     Path report = res.markdown() != null ? res.markdown() : res.json();
                     md.append(String.format(java.util.Locale.ROOT, "| %s | %s | %s | %d | %d | %d | %.1f | %s | %d | %d | %.1f | [%s](%s) |%n",
                             repo.projectKey, repo.slug, res.engine(), s.filesParsed(), s.methodCount(), s.totalCodeLines(),
@@ -494,6 +519,11 @@ public final class ScannerApp {
             log("HATA: karmaşıklık özeti yazılamadı: " + e.getMessage());
         }
         log("Kod karmaşıklığı raporları (" + written + " repo): " + dir.toAbsolutePath());
+        if (scanRunId != null) {
+            log("Veritabanı: " + dbMethods + " metot " + cfg.db.methodRiskTable + " tablosuna (" + dbMatched
+                    + " tanesi java_method_id ile eşleşti), " + dbGroups + " kopya / benzer kod grubu "
+                    + cfg.db.methodSimilarityTable + " tablosuna yazıldı (scan_run_id=" + scanRunId + ").");
+        }
         return written;
     }
 

@@ -443,6 +443,19 @@ Raporlar tarama klasöründe `complexity/` altına yazılır (sunucuda `GET /api
 
 Klonlanamayan repolar atlanır; bir repoda analiz hata verirse diğerleri devam eder. Test kaynakları varsayılan olarak hariçtir (`complexity.exclude=**/src/test/**`).
 
+### Veritabanına kayıt
+
+`db.enabled=true` ise sonuçlar exception taramasının kaydına (`env.exception_scan_run.id`) bağlı olarak iki tabloya da yazılır; her repo kendi transaction'ında, analizi biter bitmez:
+
+| Tablo | Satır | Alanlar |
+|---|---|---|
+| `env.method_risk_analyze` (`db.method.risk.table`) | Her metot, her yol için bir satır | `method_uid` (`yol#sınıf#imza#satır`), `file_path`, `class_name`, `method_signature`, `start_line`, `end_line`, `is_parser` / `is_pmd`, `ncss_loc` (yorum ve boş satır hariç kod satırı), `risk_score`, `risk_level`, `risk_inputs_json` (JSON rapordaki `riskInputs`: profil, metrikler, risk faktörleri, puan dağılımı), `body_hash`, `structural_hash`, `java_method_id` |
+| `env.method_similarity` (`db.method.similarity.table`) | Her kopya / benzer kod grubu, her yol için bir satır | `group_key` (`BIREBIR-1`, `BENZER-1` ...), `is_parser` / `is_pmd`, `similarity_type`, `similarity_percent`, `shared_ncss_lines`, `members_json` (üye metotlar: dosya, sınıf, metot, satırlar), `meta_json` (grup no, Türkçe etiket, token sayısı, yol) |
+
+`java_method_id`, exception kullanımlarındaki gibi `env.java_class` / `env.java_method` ile eşleştirilir (sınıfın tam adı, metot adı ve parametre tipleri); bulunamazsa boş kalır. Kopya kod grubu ancak paylaşılan kod en az 40 satırsa raporlanır (analizörün kuralı).
+
+Gerekenler: `scan_run_id` sütunu `bigint` olmalı ve aynı taramadaki repoları ayırmak için `project_key`, `repo` sütunları eklenmeli; `sql/method_risk_tables_migration.sql` bunları yapar (tablolardaki eski kayıtları siler). `scan_run_id` hâlâ `uuid` ise o tabloya yazılmaz, logda uyarı çıkar; `project_key` / `repo` yoksa satırlar onlarsız yazılır. Tarama veritabanına yazılmadıysa (`db.enabled=false`, `--db-dry-run` veya yazma hatası) karmaşıklık sonuçları sadece dosyalara yazılır.
+
 ## Paralel işleme
 
 Çok sayıda proje ve repo tarandığında süre büyük ölçüde repoların çekilmesine (klonlama / güncelleme) gider. Bu yüzden:
