@@ -38,15 +38,18 @@ public final class ComplexityRunner {
         this.cfg = cfg;
     }
 
+    /** complexity.engine'e göre çalıştırılacak yollar (sırayla; her yolun raporu bir sonrakinden önce bırakılır) */
+    public java.util.List<Engine> engines() {
+        if (cfg.engine == Engine.BOTH) return java.util.List.of(Engine.PARSER, Engine.PMD);
+        return java.util.List.of(cfg.engine);
+    }
+
     /**
-     * Repoyu complexity.engine'deki yol(lar)la tarar. Raporlar baseName + ".json/.md" (PMD için
-     * baseName + "-pmd.json/.md" ve "-pmd-violations.xml") olarak yazılır.
+     * Repoyu tek bir yolla tarar. Raporlar baseName + ".json/.md" (PMD için baseName + "-pmd.json/.md" ve
+     * "-pmd-violations.xml") olarak yazılır.
      */
-    public java.util.List<Result> analyze(Path sourceRoot, Path baseName) throws IOException {
-        java.util.List<Result> out = new java.util.ArrayList<Result>();
-        if (cfg.engine != Engine.PMD) out.add(parser(sourceRoot, baseName));
-        if (cfg.engine != Engine.PARSER) out.add(pmd(sourceRoot, baseName));
-        return out;
+    public Result analyze(Path sourceRoot, Path baseName, Engine engine) throws IOException {
+        return engine == Engine.PMD ? pmd(sourceRoot, baseName) : parser(sourceRoot, baseName);
     }
 
     private Result parser(Path sourceRoot, Path baseName) throws IOException {
@@ -90,7 +93,7 @@ public final class ComplexityRunner {
 
     private ScanOptions options(boolean fullDetail) {
         ScanOptions d = ScanOptions.defaults();
-        return new ScanOptions(d.workers(), d.progressEvery(), cfg.include, cfg.exclude,
+        return new ScanOptions(cfg.workers > 0 ? cfg.workers : d.workers(), d.progressEvery(), cfg.include, cfg.exclude,
                 fullDetail ? ScanOptions.ReportDetail.FULL : ScanOptions.ReportDetail.SUMMARY,
                 true, null, false, cfg.duplicates, d.minDuplicateTokens(), cfg.duplicates,
                 d.nearDuplicateAutoSkipMinFiles(), false, d.pmdMetricAlignment());

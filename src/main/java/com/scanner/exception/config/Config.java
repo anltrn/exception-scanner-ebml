@@ -191,6 +191,8 @@ public final class Config {
         /** true: JSON'da her metot (varsayılan); false: sadece dosya özetleri ve en riskli metotlar (sadece parser yolu) */
         public final boolean fullDetail;
         public final boolean duplicates;
+        /** Bir repoda aynı anda ayrıştırılan dosya sayısı; 0 = işlemci sayısı kadar (bellek yetmezse düşürün) */
+        public final int workers;
         /** JSON'un yanında okunabilir Markdown raporu da yazılsın mı */
         public final boolean markdown;
         /** Boş: yolun varsayılanı (parser: enterprise-java, pmd: enterprise-java-pmd) */
@@ -218,6 +220,8 @@ public final class Config {
             fullDetail = detail.equals("full");
             duplicates = Boolean.parseBoolean(get(p, "complexity.duplicates", "true"));
             markdown = Boolean.parseBoolean(get(p, "complexity.markdown", "true"));
+            workers = Integer.parseInt(get(p, "complexity.workers", "0").trim());
+            if (workers < 0) throw new IllegalArgumentException("complexity.workers 0 veya pozitif olmalı: " + workers);
             riskProfile = get(p, "complexity.risk.profile", "").trim();
             include = list(get(p, "complexity.include", ""));
             exclude = list(get(p, "complexity.exclude", "**/src/test/**"));

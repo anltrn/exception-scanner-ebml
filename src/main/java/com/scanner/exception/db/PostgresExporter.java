@@ -884,8 +884,12 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         public int methodsMatched;
         /** Yazılan kopya / benzer kod grubu sayısı; tablo yoksa veya uyumsuzsa -1 */
         public int groups;
-        /** Yazılamadıysa nedeni (tablo yok, scan_run_id tipi uyumsuz) */
+        /** Tablodaki bir CHECK kısıtına uymadığı için atlanan grup sayısı (ör. benzerlik oranı alt sınırı) */
+        public int groupsSkipped;
+        /** Yazılamadıysa nedeni (tablo yok, scan_run_id tipi uyumsuz, atlanan grupların kısıtı); taramada bir kez loglanır */
         public final List<String> warnings = new ArrayList<String>();
+        /** Bu repoda bir tablonun kaydı hata verdiyse hata mesajı (o tablo geri alınır, diğeri yazılır) */
+        public final List<String> errors = new ArrayList<String>();
     }
 
     /** Analizdeki metot: sınıf / metot envanteriyle (java_method_id) eşleştirmek için */
@@ -894,9 +898,9 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
     }
 
     /**
-     * Bir reponun karmaşıklık analizini scanRunId'li taramaya bağlı yazar (tek transaction). Metotlar
-     * env.java_class / env.java_method ile eşleştirilip java_method_id doldurulur. Tablolarda project_key ve
-     * repo sütunları varsa onlar da yazılır (aynı taramadaki repoları ayırmak için gerekir).
+     * Bir reponun karmaşıklık analizini scanRunId'li taramaya bağlı yazar. Metotlar ve kopya / benzer kod grupları
+     * ayrı transaction'larda yazılır: birinin hatası diğerini geri almaz. Metotlar env.java_class / env.java_method
+     * ile eşleştirilip java_method_id doldurulur. Tablolarda project_key ve repo sütunları varsa onlar da yazılır.
      */
     public ComplexityInsert insertComplexity(long scanRunId, com.scanner.exception.model.RepoInfo repo,
                                              com.scanner.complexity.AnalysisReport report) throws Exception {
@@ -904,16 +908,22 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
         boolean parser = !"pmd-native".equals(com.scanner.complexity.ComplexityJson.pipeline(report));
         try {
             ci.methods = insertMethodRisks(scanRunId, repo, report, parser, ci);
-            ci.groups = insertSimilarities(scanRunId, repo, report, parser, ci);
             con.commit();
-            return ci;
         } catch (SQLException e) {
             rollbackQuietly();
-            throw unwrap(e);
-        } catch (RuntimeException e) {
-            rollbackQuietly();
-            throw e;
+            ci.methods = 0;
+            ci.errors.add(db.methodRiskTable + ": " + unwrap(e).getMessage());
         }
+        try {
+            ci.groups = insertSimilarities(scanRunId, repo, report, parser, ci);
+            con.commit();
+        } catch (SQLException e) {
+            rollbackQuietly();
+            ci.groups = 0;
+            ci.groupsSkipped = 0;
+            ci.errors.add(db.methodSimilarityTable + ": " + unwrap(e).getMessage());
+        }
+        return ci;
     }
 
     /** scan_run_id env.exception_scan_run.id'ye (bigint) bağlanır; başka tipteyse (ör. uuid) yazılmaz */
@@ -1011,6 +1021,9 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                 + " members_json, meta_json, created_at" + (repoColumns ? ", project_key, repo" : "")
                 + ") VALUES (?,?,?,?,?,?,?,?::jsonb,?::jsonb,now()" + (repoColumns ? ",?,?" : "") + ")");
         int count = 0;
+        // Gruplar azdır; tek tek yazılır ki tablodaki bir CHECK kısıtına (ör. benzerlik oranı alt sınırı) uymayan
+        // grup atlanıp diğerleri yazılabilsin
+        java.util.Map<String, Integer> skippedBy = new java.util.TreeMap<String, Integer>();
         try {
             for (com.scanner.complexity.AnalysisReport.DuplicateGroup g : report.duplicateGroups()) {
                 int i = 1;
@@ -1027,12 +1040,26 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
                     ps.setString(i++, repo.projectKey);
                     ps.setString(i, repo.slug);
                 }
-                ps.addBatch();
-                count++;
+                java.sql.Savepoint sp = con.setSavepoint();
+                try {
+                    ps.executeUpdate();
+                    con.releaseSavepoint(sp);
+                    count++;
+                } catch (SQLException e) {
+                    if (!"23514".equals(e.getSQLState())) throw e; // check_violation dışındaki hatalar
+                    con.rollback(sp);
+                    ci.groupsSkipped++;
+                    String constraint = e instanceof org.postgresql.util.PSQLException
+                            && ((org.postgresql.util.PSQLException) e).getServerErrorMessage() != null
+                            ? ((org.postgresql.util.PSQLException) e).getServerErrorMessage().getConstraint() : null;
+                    skippedBy.merge(constraint == null ? "CHECK" : constraint, 1, Integer::sum);
+                }
             }
-            if (count > 0) ps.executeBatch();
         } finally {
             ps.close();
+        }
+        for (String c : skippedBy.keySet()) {
+            ci.warnings.add(table + ": " + c + " kısıtına uymayan gruplar atlanıyor (ör. similarity_percent alt sınırın altında)");
         }
         return count;
     }

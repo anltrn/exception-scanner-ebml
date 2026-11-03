@@ -460,7 +460,7 @@ public final class ScannerApp {
             log("Uyarı: tarama veritabanına yazılmadığı için karmaşıklık sonuçları tablolara yazılmayacak, sadece dosyalara.");
         }
         java.util.Set<String> warned = new java.util.HashSet<String>();
-        long dbMethods = 0, dbMatched = 0, dbGroups = 0;
+        long dbMethods = 0, dbMatched = 0, dbGroups = 0, dbSkipped = 0;
         log("Kod karmaşıklığı analizi başlıyor (complexity.engine=" + cfg.complexity.engine.name().toLowerCase(java.util.Locale.ROOT)
                 + "): " + results.size() + " repo");
         ComplexityRunner runner = new ComplexityRunner(cfg.complexity);
@@ -480,7 +480,9 @@ public final class ScannerApp {
             String base = GitRunner.safe(repo.projectKey) + "/" + GitRunner.safe(repo.slug);
             long started = System.currentTimeMillis();
             try {
-                for (ComplexityRunner.Result res : runner.analyze(repo.localPath, dir.resolve(base))) {
+                for (ComplexityRunner.Engine engine : runner.engines()) {
+                    // Her yolun raporu yazılıp bırakılır; engine=both'ta iki rapor aynı anda bellekte tutulmaz
+                    ComplexityRunner.Result res = runner.analyze(repo.localPath, dir.resolve(base), engine);
                     AnalysisReport.Summary s = res.summary();
                     long high = s.methodRiskDistribution().getOrDefault(RiskLevel.HIGH, 0L);
                     long critical = s.methodRiskDistribution().getOrDefault(RiskLevel.CRITICAL, 0L);
@@ -491,6 +493,11 @@ public final class ScannerApp {
                         try (PostgresExporter pg = new PostgresExporter(cfg)) {
                             PostgresExporter.ComplexityInsert ci = pg.insertComplexity(scanRunId, repo, res.report());
                             for (String w : ci.warnings) if (warned.add(w)) log("Uyarı: " + w);
+                            for (String err : ci.errors) {
+                                log(String.format("[%d/%d] %s (%s): HATA: tabloya yazılamadı, bu repo için geri alındı: %s",
+                                        done, results.size(), repo.id(), res.engine(), err));
+                            }
+                            dbSkipped += ci.groupsSkipped;
                             if (ci.methods > 0) {
                                 dbMethods += ci.methods;
                                 dbMatched += ci.methodsMatched;
@@ -508,7 +515,10 @@ public final class ScannerApp {
                             report.getFileName(), dir.relativize(report).toString().replace('\\', '/')));
                 }
                 written++;
-            } catch (Exception | OutOfMemoryError e) {
+            } catch (OutOfMemoryError e) {
+                log(String.format("[%d/%d] %s: HATA: karmaşıklık analizi için bellek yetmedi (%s). complexity.workers ile aynı anda "
+                        + "ayrıştırılan dosya sayısını düşürün (ör. 2) veya pod'a daha fazla bellek verin.", done, results.size(), repo.id(), e));
+            } catch (Exception e) {
                 log(String.format("[%d/%d] %s: HATA: karmaşıklık analizi yapılamadı: %s", done, results.size(), repo.id(), e));
             }
         }
@@ -522,7 +532,8 @@ public final class ScannerApp {
         if (scanRunId != null) {
             log("Veritabanı: " + dbMethods + " metot " + cfg.db.methodRiskTable + " tablosuna (" + dbMatched
                     + " tanesi java_method_id ile eşleşti), " + dbGroups + " kopya / benzer kod grubu "
-                    + cfg.db.methodSimilarityTable + " tablosuna yazıldı (scan_run_id=" + scanRunId + ").");
+                    + cfg.db.methodSimilarityTable + " tablosuna yazıldı (scan_run_id=" + scanRunId + ")"
+                    + (dbSkipped > 0 ? "; tablonun kısıtına uymayan " + dbSkipped + " grup atlandı" : "") + ".");
         }
         return written;
     }
