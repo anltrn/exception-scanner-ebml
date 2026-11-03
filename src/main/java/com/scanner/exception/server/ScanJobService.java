@@ -43,7 +43,8 @@ class ScanJobService {
     static final String JOB_FILE = "job.json";
     static final String LOG_FILE = "scan.log";
     static final String MASTER_REPORT = "exception_scan_report.xlsx";
-    private static final Pattern ID = Pattern.compile("[0-9]{8}-[0-9]{6}-[0-9a-f]{4}");
+    /** Veritabanı açıksa env.exception_scan_run.id (ör. 42), değilse zaman damgalı numara */
+    private static final Pattern ID = Pattern.compile("[0-9]{1,18}|[0-9]{8}-[0-9]{6}-[0-9a-f]{4}");
     private static final Pattern SECRET = Pattern.compile("(?i).*(token|password|secret|key).*");
     private static final DateTimeFormatter ID_TIME =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneId.systemDefault());
@@ -83,6 +84,15 @@ class ScanJobService {
                         job.error = "Sunucu tarama sırasında yeniden başladı";
                         job.finishedAt = Instant.now();
                         save(job);
+                        if (job.scanRunId != null) {
+                            // Kayıt tamamlanmadıysa (finished_at boş) yarım kalan taramanın kaydı silinir
+                            try {
+                                com.scanner.exception.db.PostgresExporter.deleteReservedRun(defaultConfig(), job.scanRunId);
+                            } catch (Exception e) {
+                                ScannerApp.log("Uyarı: yarım kalan taramanın kaydı silinemedi (scan_run_id="
+                                        + job.scanRunId + "): " + e.getMessage());
+                            }
+                        }
                     }
                     jobs.put(job.id, job);
                 } catch (IOException e) {
@@ -107,7 +117,17 @@ class ScanJobService {
 
         ScanJob job = new ScanJob();
         job.createdAt = Instant.now();
-        job.id = ID_TIME.format(job.createdAt) + "-" + UUID.randomUUID().toString().substring(0, 4);
+        job.id = null;
+        job.scanRunId = reserveRun(cfg);
+        if (job.scanRunId != null) {
+            job.id = String.valueOf(job.scanRunId);
+            if (jobs.containsKey(job.id) || Files.exists(jobDir(job.id))) {
+                // Veritabanı sıfırlanıp id'ler baştan başladıysa eski rapor klasörüyle çakışmasın
+                ScannerApp.log("Uyarı: " + job.id + " numaralı rapor klasörü zaten var; tarama numarası zaman damgalı verildi.");
+                job.id = null;
+            }
+        }
+        if (job.id == null) job.id = ID_TIME.format(job.createdAt) + "-" + UUID.randomUUID().toString().substring(0, 4);
         job.status = ScanJob.Status.QUEUED;
         job.trigger = trigger;
         job.request = request;
@@ -116,6 +136,18 @@ class ScanJobService {
         jobs.put(job.id, job);
         pending.put(job.id, runner.submit(() -> execute(job, cfg)));
         return job;
+    }
+
+    /** Veritabanına yazılacak taramada tarama kaydını şimdiden açar; id tarama numarası olur. Açılamazsa null. */
+    private static Long reserveRun(Config cfg) {
+        if (!cfg.db.enabled || cfg.db.dryRun) return null;
+        try {
+            return com.scanner.exception.db.PostgresExporter.reserveRun(cfg);
+        } catch (Exception e) {
+            ScannerApp.log("Uyarı: tarama kaydı açılamadı, tarama numarası zaman damgalı verildi (scan_run_id tarama "
+                    + "sonunda ayrıca oluşur): " + e.getMessage());
+            return null;
+        }
     }
 
     private void execute(ScanJob job, Config cfg) {
@@ -139,7 +171,7 @@ class ScanJobService {
             job.startedAt = Instant.now();
             save(job);
             ScannerApp.log("Tarama başladı: " + job.id);
-            job.summary = ScannerApp.scan(cfg, dir);
+            job.summary = ScannerApp.scan(cfg, dir, job.scanRunId);
             job.status = ScanJob.Status.SUCCEEDED;
         } catch (Throwable e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
@@ -187,6 +219,14 @@ class ScanJobService {
         }
         Future<?> f = pending.remove(id);
         if (f != null) f.cancel(false);
+        if (job.status == ScanJob.Status.QUEUED && job.scanRunId != null) {
+            try {
+                com.scanner.exception.db.PostgresExporter.deleteReservedRun(Config.load(baseConfig(), overrides(job.request)),
+                        job.scanRunId);
+            } catch (Exception e) {
+                ScannerApp.log("Uyarı: iptal edilen taramanın kaydı silinemedi (scan_run_id=" + job.scanRunId + "): " + e.getMessage());
+            }
+        }
         jobs.remove(id);
         deleteRecursively(jobDir(id));
     }

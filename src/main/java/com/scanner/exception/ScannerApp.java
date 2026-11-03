@@ -216,6 +216,31 @@ public final class ScannerApp {
      * @return özet sayılar (repo, Java dosyası, kullanım, hata sayısı ve rapor klasörü)
      */
     public static Map<String, Object> scan(final Config cfg, Path outDir) throws Exception {
+        return scan(cfg, outDir, null);
+    }
+
+    /**
+     * @param reservedRunId sunucuda tarama sıraya alınırken açılan env.exception_scan_run kaydı (tarama numarası);
+     *                      kayıtlar ona yazılır. Tarama veritabanına yazılmadan biterse (hata, deneme modu, bağlantı
+     *                      hatası) bu boş kayıt silinir.
+     */
+    public static Map<String, Object> scan(final Config cfg, Path outDir, Long reservedRunId) throws Exception {
+        try {
+            return doScan(cfg, outDir, reservedRunId);
+        } finally {
+            if (reservedRunId != null) {
+                try {
+                    if (PostgresExporter.deleteReservedRun(cfg, reservedRunId)) {
+                        log("Tarama veritabanına yazılmadığı için boş tarama kaydı silindi (scan_run_id=" + reservedRunId + ").");
+                    }
+                } catch (Exception e) {
+                    log("Uyarı: boş tarama kaydı silinemedi (scan_run_id=" + reservedRunId + "): " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    private static Map<String, Object> doScan(final Config cfg, Path outDir, Long reservedRunId) throws Exception {
         final java.time.Instant startedAt = java.time.Instant.now();
         Map<String, Object> summary = new java.util.LinkedHashMap<String, Object>();
         log("Kaynak: " + cfg.source + " | Aranan sınıflar: "
@@ -345,8 +370,9 @@ public final class ScannerApp {
                 if (cfg.db.dryRun) {
                     log("Veritabanı: deneme modu (--db-dry-run), kayıt yapılmadı.");
                 } else {
-                    PostgresExporter.InsertResult ir = pg.insert(results, startedAt);
+                    PostgresExporter.InsertResult ir = pg.insert(results, startedAt, reservedRunId);
                     scanRunId = ir.runId;
+                    summary.put("scanRunId", ir.runId);
                     log("Veritabanı: " + ir.inserted + " kullanım " + cfg.db.usageTable + " tablosuna yazıldı"
                             + " (scan_run_id=" + ir.runId + ")"
                             + (ir.skipped > 0 ? ", sınıfı bulunamayan " + ir.skipped + " kullanım atlandı" : "") + ".");

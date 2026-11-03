@@ -13,8 +13,11 @@ public class ScanJob {
 
     public enum Trigger { API, SCHEDULE }
 
-    @Schema(description = "Tarama numarası", example = "20261009-142233-a1b2")
+    @Schema(description = "Tarama numarası: veritabanı açıksa env.exception_scan_run.id ile aynı (ör. 42), "
+            + "değilse zaman damgalı (ör. 20261009-142233-a1b2)", example = "42")
     public String id;
+    @Schema(description = "env.exception_scan_run.id; tarama veritabanına yazılmıyorsa boş")
+    public Long scanRunId;
     public Status status;
     @Schema(description = "API: Swagger / REST ile başlatıldı, SCHEDULE: günlük otomatik tarama")
     public Trigger trigger;

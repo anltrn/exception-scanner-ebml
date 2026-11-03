@@ -169,10 +169,20 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
      *                  now() transaction'ın başlangıcını döndürür.
      */
     public InsertResult insert(List<RepoResult> results, java.time.Instant startedAt) throws SQLException {
+        return insert(results, startedAt, null);
+    }
+
+    /**
+     * @param reservedRunId taramaya sıraya alınırken açılmış kayıt (reserveRun; sunucuda tarama numarası) varsa
+     *                      o kayıt doldurulur, yoksa yeni kayıt açılır
+     */
+    public InsertResult insert(List<RepoResult> results, java.time.Instant startedAt, Long reservedRunId)
+            throws SQLException {
         try {
             upsertTypes();
             InsertResult ir = new InsertResult();
-            ir.runId = insertRun(results, startedAt);
+            ir.runId = reservedRunId != null ? fillReservedRun(reservedRunId, results, startedAt)
+                    : insertRun(results, startedAt);
 
             String sql = "INSERT INTO " + db.usageTable + " (scan_run_id, class_id, method_id, usage_type_code,"
                     + " match_status, match_note, project_key, repo, module, file_path, line_no, class_fqcn,"
@@ -855,6 +865,62 @@ public final class PostgresExporter implements DbCatalog, AutoCloseable {
             }
         } finally {
             ps.close();
+        }
+    }
+
+    /** reserveRun ile açılmış (henüz bitmemiş) kaydı taramanın bilgileriyle doldurur */
+    private long fillReservedRun(long runId, List<RepoResult> results, java.time.Instant startedAt) throws SQLException {
+        int javaFiles = 0;
+        for (RepoResult r : results) javaFiles += r.javaFiles;
+        PreparedStatement ps = con.prepareStatement("UPDATE " + db.runTable
+                + " SET started_at = ?, source = ?, repo_count = ?, java_file_count = ?, exception_classes = ?, note = ?,"
+                + " run_by = ?, host = ? WHERE id = ? AND finished_at IS NULL");
+        try {
+            ps.setObject(1, java.time.OffsetDateTime.ofInstant(startedAt, java.time.ZoneOffset.UTC));
+            ps.setString(2, cfg.source.name());
+            ps.setInt(3, results.size());
+            ps.setInt(4, javaFiles);
+            ps.setString(5, String.join(",", cfg.exceptionClasses));
+            ps.setString(6, db.note.isEmpty() ? defaultNote(startedAt) : db.note);
+            ps.setString(7, cut(System.getProperty("user.name"), 100));
+            ps.setString(8, cut(hostName(), 200));
+            ps.setLong(9, runId);
+            if (ps.executeUpdate() != 1) {
+                throw new SQLException("Tarama kaydı bulunamadı veya tamamlanmış: " + db.runTable + ".id=" + runId);
+            }
+            return runId;
+        } finally {
+            ps.close();
+        }
+    }
+
+    /**
+     * Sunucuda tarama sıraya alınırken tarama kaydını açar; dönen id tarama numarası olur. Kayıt tarama bitince
+     * insert(..., reservedRunId) ile doldurulur; o zamana kadar finished_at boştur (görünümler bu kayıtları saymaz).
+     */
+    public static long reserveRun(Config cfg) throws SQLException {
+        try (Connection c = connect(cfg.db);
+             PreparedStatement ps = c.prepareStatement("INSERT INTO " + cfg.db.runTable
+                     + " (started_at, source, exception_classes, note, run_by, host) VALUES (now(), ?, ?, ?, ?, ?) RETURNING id")) {
+            ps.setString(1, cfg.source.name());
+            ps.setString(2, String.join(",", cfg.exceptionClasses));
+            ps.setString(3, "Sırada");
+            ps.setString(4, cut(System.getProperty("user.name"), 100));
+            ps.setString(5, cut(hostName(), 200));
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /** reserveRun ile açılıp doldurulmamış kaydı siler (iptal, hata, deneme modu); tamamlanmış kayda dokunmaz */
+    public static boolean deleteReservedRun(Config cfg, long runId) throws SQLException {
+        try (Connection c = connect(cfg.db);
+             PreparedStatement ps = c.prepareStatement("DELETE FROM " + cfg.db.runTable
+                     + " WHERE id = ? AND finished_at IS NULL")) {
+            ps.setLong(1, runId);
+            return ps.executeUpdate() > 0;
         }
     }
 

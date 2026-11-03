@@ -355,6 +355,8 @@ Geliştirirken yerelde başlatmanın üç yolu vardır; hepsi `http://localhost:
 }
 ```
 
+**Tarama numarası:** `db.enabled=true` ise tarama sıraya alınırken `env.exception_scan_run` kaydı açılır ve tarama numarası bu kaydın id'si olur (ör. `42`); `GET /api/scans/42`, rapor klasörü `42/`, tablolardaki `scan_run_id = 42` ve `/api/reports/excel?scanRunId=42` aynı taramayı gösterir. Kayıt tarama bitince doldurulur; o zamana kadar `finished_at` boştur ve `v_*_latest` görünümleri onu saymaz. Tarama veritabanına yazılmadan biterse (sıradayken iptal, hata, sunucunun tarama sırasında yeniden başlaması, `db.dry.run=true`) bu boş kayıt silinir. Veritabanı kapalıysa veya kayıt açılamazsa numara zaman damgalı verilir (ör. `20261009-142233-a1b2`) ve `scan_run_id` tarama sonunda ayrıca oluşur; her durumda tarama sonucundaki `scanRunId` alanı kaydın id'sini gösterir.
+
 Taramalar sırayla çalışır (aynı anda tek tarama isteği); sonradan gelenler sırada bekler. Bir taramanın içindeki projeler ve repolar ise paralel işlenir (bkz. [Paralel işleme](#paralel-işleme)). Klonlanan repolar taramalar arasında saklanır, sonraki taramada sadece değişiklikler çekilir. Her taramanın raporları, logu ve durumu `<rapor klasörü>/<tarama numarası>/` altına yazılır; sunucu yeniden başladığında önceki taramalar listede kalır.
 
 ### Veritabanından rapor
