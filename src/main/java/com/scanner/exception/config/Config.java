@@ -81,6 +81,7 @@ public final class Config {
     public final int maxFileKb;
     public final Db db;
     public final Ebml ebml;
+    public final Complexity complexity;
 
     /** Ekran (.ebml), region (.ebml), Jasper rapor (.dsxml) ve process envanteri ayarları (ebml.*) */
     public static final class Ebml {
@@ -172,6 +173,54 @@ public final class Config {
                 if (!s.trim().isEmpty()) out.add(s.trim().toLowerCase(Locale.ROOT));
             }
             return Collections.unmodifiableList(out);
+        }
+    }
+
+    /**
+     * Kod karmaşıklığı analizi (complexity.*): exception taramasından sonra klonlanmış repolar üzerinde çalışır.
+     * Tarama komut satırından, Swagger / REST'ten veya otomatik olarak başlatılmış olsun, complexity.enabled belirler.
+     */
+    public static final class Complexity {
+        public final boolean enabled;
+        /** PARSER (JavaParser, tam metrik), PMD (sadece PMD) veya BOTH */
+        public final com.scanner.complexity.ComplexityRunner.Engine engine;
+        public final com.github.javaparser.ParserConfiguration.LanguageLevel languageLevel;
+        public final Charset charset;
+        /** Raporlardaki en riskli metot sayısı */
+        public final int top;
+        /** true: JSON'da her metot (varsayılan); false: sadece dosya özetleri ve en riskli metotlar (sadece parser yolu) */
+        public final boolean fullDetail;
+        public final boolean duplicates;
+        /** JSON'un yanında okunabilir Markdown raporu da yazılsın mı */
+        public final boolean markdown;
+        /** Boş: yolun varsayılanı (parser: enterprise-java, pmd: enterprise-java-pmd) */
+        public final String riskProfile;
+        public final List<String> include;
+        public final List<String> exclude;
+
+        Complexity(Properties p) {
+            enabled = Boolean.parseBoolean(get(p, "complexity.enabled", "false"));
+            String eng = get(p, "complexity.engine", "parser").trim().toUpperCase(Locale.ROOT);
+            try {
+                engine = com.scanner.complexity.ComplexityRunner.Engine.valueOf(eng);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("complexity.engine parser, pmd veya both olmalı: " + eng);
+            }
+            String level = get(p, "complexity.language.level", "JAVA_17").trim().toUpperCase(Locale.ROOT);
+            languageLevel = com.github.javaparser.ParserConfiguration.LanguageLevel.valueOf(
+                    level.startsWith("JAVA_") ? level : "JAVA_" + level);
+            charset = Charset.forName(get(p, "complexity.encoding", "UTF-8").trim());
+            top = Integer.parseInt(get(p, "complexity.top", "20").trim());
+            String detail = get(p, "complexity.detail", "full").trim().toLowerCase(Locale.ROOT);
+            if (!detail.equals("full") && !detail.equals("summary")) {
+                throw new IllegalArgumentException("complexity.detail full veya summary olmalı: " + detail);
+            }
+            fullDetail = detail.equals("full");
+            duplicates = Boolean.parseBoolean(get(p, "complexity.duplicates", "true"));
+            markdown = Boolean.parseBoolean(get(p, "complexity.markdown", "true"));
+            riskProfile = get(p, "complexity.risk.profile", "").trim();
+            include = list(get(p, "complexity.include", ""));
+            exclude = list(get(p, "complexity.exclude", "**/src/test/**"));
         }
     }
 
@@ -314,6 +363,7 @@ public final class Config {
         maxFileKb = Integer.parseInt(get(p, "scan.max.file.kb", "2048"));
         db = new Db(p);
         ebml = new Ebml(p);
+        complexity = new Complexity(p);
         validate();
     }
 
@@ -373,12 +423,13 @@ public final class Config {
     }
 
     private void validate() {
-        if (exceptionClasses.isEmpty() && !ebml.enabled && !collectAllSwallowed()) {
+        if (exceptionClasses.isEmpty() && !ebml.enabled && !collectAllSwallowed() && !complexity.enabled) {
             throw new IllegalArgumentException("Aranacak bir şey tanımlanmadı. Ayar dosyasında exception.classes "
                     + "boş ve komut satırında --class verilmedi. Ayar dosyasının doğru klasörde olduğunu "
                     + "ve exception.classes satırının dolu olduğunu kontrol edin. "
                     + "Örnek: --class com.firma.framework.CustomException (sadece ekran/rapor envanteri için --ebml, "
-                    + "sadece hata yutan catch blokları için scan.swallowed.scope=ALL)");
+                    + "sadece hata yutan catch blokları için scan.swallowed.scope=ALL, sadece kod karmaşıklığı için "
+                    + "complexity.enabled=true)");
         }
         for (String c : exceptionClasses) {
             if (!c.contains(".")) {

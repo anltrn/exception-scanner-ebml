@@ -1,0 +1,197 @@
+package com.scanner.complexity;
+
+import com.github.javaparser.ParserConfiguration;
+import com.scanner.complexity.AnalysisReport.ClassMetric;
+import com.scanner.complexity.AnalysisReport.FileMetric;
+import com.scanner.complexity.AnalysisReport.PmdViolationRow;
+import com.scanner.complexity.RiskCalculator.Assessment;
+import net.sourceforge.pmd.lang.java.ast.ASTCompilationUnit;
+import net.sourceforge.pmd.lang.java.ast.ASTConstructorDeclaration;
+import net.sourceforge.pmd.lang.java.ast.ASTExecutableDeclaration;
+import net.sourceforge.pmd.lang.java.ast.ASTMethodDeclaration;
+import net.sourceforge.pmd.lang.java.ast.ASTTypeDeclaration;
+import net.sourceforge.pmd.lang.java.metrics.JavaMetrics;
+import net.sourceforge.pmd.lang.metrics.Metric;
+import net.sourceforge.pmd.lang.metrics.MetricOptions;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** PMD AST + JavaMetrics ile metod katalogu ve risk (JavaParser kullanılmaz). */
+final class PmdFileMetricsBuilder {
+
+    private PmdFileMetricsBuilder() {
+    }
+
+    static FileMetric build(String relativePath, String sourceText,
+                            ParserConfiguration.LanguageLevel languageLevel,
+                            List<PmdViolationRow> fileViolations, RiskCalculator riskCalculator,
+                            boolean attachDuplicateHashes) {
+        return PmdMetricsAligner.withParseSession(languageLevel, session -> {
+            try {
+                ASTCompilationUnit unit = session.parse(sourceText, relativePath);
+                return buildFromUnit(relativePath, sourceText, unit, fileViolations, riskCalculator,
+                        attachDuplicateHashes);
+            } catch (Exception e) {
+                throw new RuntimeException(relativePath + ": " + e.getMessage(), e);
+            }
+        });
+    }
+
+    private static FileMetric buildFromUnit(String relativePath, String sourceText, ASTCompilationUnit unit,
+                                            List<PmdViolationRow> fileViolations,
+                                            RiskCalculator riskCalculator, boolean attachDuplicateHashes) {
+        String packageName = unit.getPackageName() == null ? "" : unit.getPackageName();
+        MetricOptions options = MetricOptions.emptyOptions();
+        List<ClassMetric> classes = new ArrayList<>();
+        for (ASTTypeDeclaration type : unit.getTypeDeclarations().toList()) {
+            classes.add(buildType(type, sourceText, fileViolations, options, riskCalculator, attachDuplicateHashes));
+        }
+        List<MethodMetric> allMethods = classes.stream().flatMap(c -> c.methods().stream()).toList();
+        int wmc = allMethods.stream().mapToInt(MethodMetric::cyclomaticComplexity).sum();
+        int maxCc = allMethods.stream().mapToInt(MethodMetric::cyclomaticComplexity).max().orElse(0);
+        int loc = allMethods.stream().mapToInt(MethodMetric::codeLines).sum();
+        Assessment risk = riskCalculator.assessAggregate(allMethods, loc, wmc, RiskCalculator.Scope.FILE);
+        return new FileMetric(relativePath, packageName, unit.getEndLine(), loc, classes.size(), allMethods.size(),
+                wmc, maxCc, risk.score(), risk.level(), risk.factors(), classes,
+                HalsteadMetrics.EMPTY, 0, 0, 0, 0, 0, "", false, 0);
+    }
+
+    private static ClassMetric buildType(ASTTypeDeclaration type, String sourceText, List<PmdViolationRow> fileViolations,
+                                         MetricOptions options, RiskCalculator riskCalculator,
+                                         boolean attachDuplicateHashes) {
+        String simpleName = type.getSimpleName();
+        List<MethodMetric> methods = new ArrayList<>();
+        for (ASTExecutableDeclaration exec : type.getOperations().toList()) {
+            methods.add(buildMethod(exec, sourceText, fileViolations, options, riskCalculator, attachDuplicateHashes));
+        }
+        int wmc = methods.stream().mapToInt(MethodMetric::cyclomaticComplexity).sum();
+        int maxCc = methods.stream().mapToInt(MethodMetric::cyclomaticComplexity).max().orElse(0);
+        double avg = methods.isEmpty() ? 0.0 : Math.round(wmc * 100.0 / methods.size()) / 100.0;
+        int loc = methods.stream().mapToInt(MethodMetric::codeLines).sum();
+        Assessment classRisk = riskCalculator.assessClassAggregate(methods, loc, wmc, 0, 0);
+        boolean godClass = methods.stream().anyMatch(MethodMetric::godMethod)
+                || fileViolations != null && fileViolations.stream()
+                .anyMatch(v -> "GodClass".equals(v.ruleName()) && v.beginLine() >= type.getBeginLine()
+                        && v.beginLine() <= type.getEndLine());
+        return new ClassMetric(simpleName, typeKind(type), type.getBeginLine(), type.getEndLine(), methods.size(), 0,
+                loc, 0, wmc, maxCc, avg, classRisk.score(), classRisk.level(), classRisk.factors(), methods,
+                HalsteadMetrics.EMPTY, List.of(), 0.0, godClass, 0, 0, 0, 0, 0);
+    }
+
+    private static MethodMetric buildMethod(ASTExecutableDeclaration exec, String sourceText,
+                                            List<PmdViolationRow> fileViolations, MetricOptions options,
+                                            RiskCalculator riskCalculator, boolean attachDuplicateHashes) {
+        int cyclo = Metric.compute(JavaMetrics.CYCLO, exec, options);
+        int cognitive = Metric.compute(JavaMetrics.COGNITIVE_COMPLEXITY, exec, options);
+        int ncss = Metric.compute(JavaMetrics.NCSS, exec, options);
+        int npath = PmdMetricsAligner.capNpath(Metric.compute(JavaMetrics.NPATH, exec, options));
+        PmdAstMethodStats.Stats stats = PmdAstMethodStats.analyze(exec);
+        HalsteadMetrics halstead = PmdHalsteadApproximation.analyze(exec);
+        String name = exec.getName();
+        String kind = exec instanceof ASTConstructorDeclaration ? "CONSTRUCTOR" : "METHOD";
+        int arity = exec.getArity();
+        String signature = name + "(" + arity + " param)";
+        int start = exec.getBeginLine();
+        int end = exec.getEndLine();
+        int physical = Math.max(0, end - start + 1);
+        // Risk LOC = NCSS (yorum / boş satır hariç). physical satır aralığı yorumları da kapsar — skora girmez.
+        int codeLines = ncss > 0 ? ncss : Math.max(countCodeLinesExcludingComments(sourceText, start, end), 1);
+
+        MethodMetric skeleton = MethodMetric.withoutLegacyExtensions(
+                name, kind, signature, returnType(exec), start, end,
+                cyclo, physical, codeLines, stats.logicalStatements(), cognitive, stats.exitPoints(),
+                stats.catchClauses(), stats.switchCases(), 0, stats.lambdaCount(), stats.maxTryNestingDepth(),
+                stats.localVariableCount(), 0, stats.emptyCatchBlocks(), stats.catchExceptionOrThrowable(), 0,
+                0, stats.maxBooleanOperatorsInCondition(), stats.maxNestingDepth(), arity,
+                false, 0.0, RiskLevel.LOW, List.of(), null, "", "", npath, ncss);
+
+        MethodScanValues scan = MethodScanValues.withLegacyExtensions(
+                baseScanFromSkeleton(skeleton), halstead, List.of(), List.of());
+        scan = PmdViolationMethodEnricher.applyScanValues(scan, fileViolations, start, end);
+        Assessment risk = riskCalculator.assessMethod(scan);
+        boolean god = riskCalculator.isGodMethod(scan);
+
+        PmdSourceMethodHashes.Hashes hashes = attachDuplicateHashes
+                ? PmdSourceMethodHashes.fromSourceSlice(sourceText, start, end)
+                : PmdSourceMethodHashes.Hashes.empty();
+
+        return new MethodMetric(name, kind, signature, returnType(exec), start, end, cyclo, physical, codeLines,
+                scan.logicalStatements(), cognitive, scan.exitPoints(), scan.catchClauses(), scan.switchCases(),
+                scan.outboundDistinctCalls(), scan.lambdaCount(), scan.maxTryNestingDepth(), scan.localVariableCount(),
+                scan.maxMethodCallChainLength(), scan.emptyCatchBlocks(), scan.catchExceptionOrThrowable(),
+                scan.catchWithOnlyPrintStackTrace(), scan.primitiveObsessionIndex(),
+                scan.maxBooleanOperatorsInCondition(), scan.maxNestingDepth(), arity, god, risk.score(), risk.level(),
+                risk.factors(), risk.breakdown(), halstead, List.of(), List.of(), "", false, List.of(),
+                hashes.bodyHash(), hashes.structuralHash(), npath, ncss);
+    }
+
+    private static MethodScanValues baseScanFromSkeleton(MethodMetric method) {
+        return new MethodScanValues(method.cyclomaticComplexity(), method.codeLines(), method.maxNestingDepth(),
+                method.parameterCount(), method.cognitiveComplexity(), method.logicalStatements(), method.exitPoints(),
+                method.catchClauses(), method.switchCases(), method.outboundDistinctCalls(), method.lambdaCount(),
+                method.maxTryNestingDepth(), method.localVariableCount(), method.maxMethodCallChainLength(),
+                method.emptyCatchBlocks(), method.catchExceptionOrThrowable(), method.catchWithOnlyPrintStackTrace(),
+                method.primitiveObsessionIndex(), method.maxBooleanOperatorsInCondition(), 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    /** Yorum ve boş satırları sayma — NCSS yoksa LOC yedek. */
+    static int countCodeLinesExcludingComments(String source, int startLine, int endLine) {
+        if (source == null || source.isEmpty() || startLine < 1 || endLine < startLine) {
+            return 0;
+        }
+        String[] lines = source.split("\n", -1);
+        int from = Math.min(startLine - 1, lines.length);
+        int to = Math.min(endLine, lines.length);
+        boolean inBlock = false;
+        int count = 0;
+        for (int i = from; i < to; i++) {
+            String line = lines[i];
+            StringBuilder code = new StringBuilder();
+            for (int c = 0; c < line.length(); c++) {
+                char ch = line.charAt(c);
+                char next = c + 1 < line.length() ? line.charAt(c + 1) : '\0';
+                if (inBlock) {
+                    if (ch == '*' && next == '/') {
+                        inBlock = false;
+                        c++;
+                    }
+                    continue;
+                }
+                if (ch == '/' && next == '*') {
+                    inBlock = true;
+                    c++;
+                    continue;
+                }
+                if (ch == '/' && next == '/') {
+                    break;
+                }
+                code.append(ch);
+            }
+            if (!code.toString().trim().isEmpty()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static String returnType(ASTExecutableDeclaration exec) {
+        if (exec instanceof ASTMethodDeclaration method) {
+            if (method.isVoid()) {
+                return "void";
+            }
+            return method.getResultTypeNode().getTypeMirror().toString();
+        }
+        return "";
+    }
+
+    private static String typeKind(ASTTypeDeclaration type) {
+        return switch (type.getXPathNodeName()) {
+            case "InterfaceDeclaration" -> "INTERFACE";
+            case "EnumDeclaration" -> "ENUM";
+            case "RecordDeclaration" -> "RECORD";
+            case "AnnotationTypeDeclaration" -> "ANNOTATION";
+            default -> "CLASS";
+        };
+    }
+}

@@ -1,0 +1,47 @@
+package com.scanner.complexity;
+
+/**
+ * Basit JavaBeans getter/setter/is-accessor — risk tablosu ve hotspot gürültüsünü azaltmak için.
+ */
+final class MethodAccessorFilter {
+
+    private static final int MAX_CYCLOMATIC = 2;
+    private static final int MAX_CODE_LINES = 8;
+    private static final int MAX_LOGICAL_STATEMENTS = 3;
+
+    private MethodAccessorFilter() {
+    }
+
+    static boolean isSimpleGetterOrSetter(MethodMetric method) {
+        if (method == null) {
+            return false;
+        }
+        return isSimpleGetterOrSetter(method.kind(), method.name(), method.parameterCount(),
+                method.cyclomaticComplexity(), method.codeLines(), method.logicalStatements(),
+                method.outboundDistinctCalls(), method.catchClauses());
+    }
+
+    static boolean isSimpleGetterOrSetter(String kind, String name, int parameterCount, int cyclomaticComplexity,
+                                          int codeLines, int logicalStatements, int outboundDistinctCalls,
+                                          int catchClauses) {
+        if (!"METHOD".equals(kind)) {
+            return false;
+        }
+        if (cyclomaticComplexity > MAX_CYCLOMATIC
+                || codeLines > MAX_CODE_LINES
+                || logicalStatements > MAX_LOGICAL_STATEMENTS) {
+            return false;
+        }
+        if (outboundDistinctCalls > 0 || catchClauses > 0) {
+            return false;
+        }
+        int params = parameterCount;
+        if (name.startsWith("get") && name.length() > 3 && params == 0) {
+            return true;
+        }
+        if (name.startsWith("is") && name.length() > 2 && params == 0) {
+            return true;
+        }
+        return name.startsWith("set") && name.length() > 3 && params == 1;
+    }
+}

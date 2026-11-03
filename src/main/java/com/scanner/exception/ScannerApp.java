@@ -1,5 +1,8 @@
 package com.scanner.exception;
 
+import com.scanner.complexity.AnalysisReport;
+import com.scanner.complexity.ComplexityRunner;
+import com.scanner.complexity.RiskLevel;
 import com.scanner.exception.config.Config;
 import com.scanner.exception.db.DbMatcher;
 import com.scanner.exception.db.PostgresExporter;
@@ -77,6 +80,7 @@ public final class ScannerApp {
             "  --db-dry-run         Eşleştir ve raporda göster ama tabloya yazma",
             "  --db-note <metin>    Tarama kaydına açıklama ekle, ör. \"Ekim takibi\"",
             "  --ebml               Ekran/popup/region (.ebml), Jasper rapor (.dsxml) ve process (processdefinition.xml) tanımlarını da bul",
+            "  --complexity         Taramadan sonra her repoda kod karmaşıklığı analizi yap (complexity.* ayarları)",
             "                       (--class verilmezse sadece bu envanter çıkarılır)",
             "  --out <klasör>       Raporların yazılacağı klasör",
             "  --threads <n>        Aynı anda ayrıştırılacak repo sayısı (varsayılan 4; bellek yetmezse düşürün)",
@@ -176,6 +180,9 @@ public final class ScannerApp {
                     break;
                 case "--ebml":
                     overrides.setProperty("ebml.enabled", "true");
+                    break;
+                case "--complexity":
+                    overrides.setProperty("complexity.enabled", "true");
                     break;
                 case "--lenient":
                     overrides.setProperty("match.lenient", "true");
@@ -397,6 +404,7 @@ public final class ScannerApp {
             log(String.format("EBML: %d ekran, %d popup, %d region, %d Jasper rapor, %d process bulundu%s.", sc, pu, rg, rp, pr,
                     un > 0 ? "; " + un + " dosya beklenen paketlerde değil (raporda 'EBML Dosyaları' sayfası)" : ""));
         }
+        if (cfg.complexity.enabled) summary.put("complexityReports", analyzeComplexity(cfg, results, outDir.resolve("complexity")));
         summary.put("javaFiles", javaFiles);
         summary.put("usages", usages);
         summary.put("errors", errors);
@@ -436,6 +444,59 @@ public final class ScannerApp {
      * tarama boşa gitmesin diye raporlar yine yazılır; sadece veritabanı adımı atlanır (false döner).
      * Bağlantı eşleştirme bitince kapatılır.
      */
+    /**
+     * Exception taramasından sonra klonlanmış her repoda kod karmaşıklığı analizi yapar (complexity.enabled=true).
+     * Her repo için complexity/<proje>/<repo>.json ve .md (PMD yolu için -pmd.json, -pmd.md, -pmd-violations.xml),
+     * hepsinin özeti için complexity/summary.md yazılır. Bir reponun analizi hata verirse diğerleri devam eder.
+     */
+    private static int analyzeComplexity(Config cfg, List<RepoResult> results, Path dir) {
+        log("Kod karmaşıklığı analizi başlıyor (complexity.engine=" + cfg.complexity.engine.name().toLowerCase(java.util.Locale.ROOT)
+                + "): " + results.size() + " repo");
+        ComplexityRunner runner = new ComplexityRunner(cfg.complexity);
+        StringBuilder md = new StringBuilder("# Kod karmaşıklığı özeti\n\n"
+                + "| Proje | Repo | Yol | Dosya | Metot | Kod satırı | Proje riski | Seviye | YÜKSEK | KRİTİK | p95 | Rapor |\n"
+                + "|---|---|---|--:|--:|--:|--:|---|--:|--:|--:|---|\n");
+        int done = 0, written = 0;
+        for (RepoResult r : results) {
+            done++;
+            RepoInfo repo = r.repo;
+            boolean cloned = repo.localPath != null && java.nio.file.Files.isDirectory(repo.localPath);
+            for (ScanError e : r.errors) if (e.stage == ScanError.Stage.CLONE) cloned = false;
+            if (!cloned) {
+                log(String.format("[%d/%d] %s: karmaşıklık analizi atlandı (repo indirilemedi)", done, results.size(), repo.id()));
+                continue;
+            }
+            String base = GitRunner.safe(repo.projectKey) + "/" + GitRunner.safe(repo.slug);
+            long started = System.currentTimeMillis();
+            try {
+                for (ComplexityRunner.Result res : runner.analyze(repo.localPath, dir.resolve(base))) {
+                    AnalysisReport.Summary s = res.summary();
+                    long high = s.methodRiskDistribution().getOrDefault(RiskLevel.HIGH, 0L);
+                    long critical = s.methodRiskDistribution().getOrDefault(RiskLevel.CRITICAL, 0L);
+                    log(String.format("[%d/%d] %s (%s): %d dosya, %d metot, proje riski %.1f (%s), %d yüksek / %d kritik metot (%s)",
+                            done, results.size(), repo.id(), res.engine(), s.filesParsed(), s.methodCount(), s.projectRiskScore(),
+                            s.projectRiskLevel(), high, critical, seconds(System.currentTimeMillis() - started)));
+                    Path report = res.markdown() != null ? res.markdown() : res.json();
+                    md.append(String.format(java.util.Locale.ROOT, "| %s | %s | %s | %d | %d | %d | %.1f | %s | %d | %d | %.1f | [%s](%s) |%n",
+                            repo.projectKey, repo.slug, res.engine(), s.filesParsed(), s.methodCount(), s.totalCodeLines(),
+                            s.projectRiskScore(), s.projectRiskLevel(), high, critical, s.methodRiskScoreP95(),
+                            report.getFileName(), dir.relativize(report).toString().replace('\\', '/')));
+                }
+                written++;
+            } catch (Exception | OutOfMemoryError e) {
+                log(String.format("[%d/%d] %s: HATA: karmaşıklık analizi yapılamadı: %s", done, results.size(), repo.id(), e));
+            }
+        }
+        try {
+            java.nio.file.Files.createDirectories(dir);
+            java.nio.file.Files.write(dir.resolve("summary.md"), md.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (java.io.IOException e) {
+            log("HATA: karmaşıklık özeti yazılamadı: " + e.getMessage());
+        }
+        log("Kod karmaşıklığı raporları (" + written + " repo): " + dir.toAbsolutePath());
+        return written;
+    }
+
     private static boolean resolveInDatabase(Config cfg, List<RepoResult> results) {
         List<UsageFinding> all = new ArrayList<UsageFinding>();
         for (RepoResult r : results) all.addAll(r.usages);

@@ -419,6 +419,30 @@ docker run -d -p 8080:8080 -v system-code-analyzer-data:/data \
 
 Heap konteyner bellek limitinin %75'i olarak ayarlanır. Bitbucket'ın sertifikası tanınmıyorsa PEM dosyasını bağlayıp `EXTRA_CA_BUNDLE` (Java için) ve `GIT_SSL_CAINFO` (git için) ile verin (git bu dosyayı sistem sertifikalarının yerine kullanır; sistem paketiyle birleştirilmiş bir dosya verin).
 
+## Kod karmaşıklığı analizi
+
+Exception taramasından sonra klonlanmış her repoda metot karmaşıklığı ve risk analizi yapılabilir: dallanma (CC), kod satırı, iç içe derinlik, okunabilirlik, Halstead, kod kokuları ve kopya kod (PMD CPD). Analizör `com.scanner.complexity` paketindedir; [java-code-analyzer](https://github.com/kaanerdem1/java-code-analyzer) projesinin `cleanup/slim-analyzer` dalının kodudur (sadece paket adı değişti). Bağlantıyı `ComplexityRunner` sınıfı kurar; risk profilleri `src/main/resources/config/risk-parameters-proposal.yaml`, PMD ruleset'i `src/main/resources/config/pmd-ruleset-complexity.xml` dosyasındadır.
+
+`complexity.enabled=true` ya da `--complexity` ile açılır. Tarama nereden başlatılırsa başlatılsın (komut satırı, Swagger / REST, günlük otomatik tarama) analizin yapılıp yapılmayacağını bu tek ayar belirler; Swagger'dan bir defalığına `"properties": {"complexity.enabled": "true"}` ile de açılabilir. `exception.classes` boşsa sadece karmaşıklık analizi yapılır.
+
+İki tarama yolu vardır (`complexity.engine`):
+
+| Yol | Ne yapar | Varsayılan risk profili |
+|---|---|---|
+| `parser` (varsayılan) | JavaParser ile tam metrik | `enterprise-java` |
+| `pmd` | Sadece PMD: ruleset + PMD AST / JavaMetrics | `enterprise-java-pmd` |
+| `both` | İkisi de, ayrı raporlarla | |
+
+Raporlar tarama klasöründe `complexity/` altına yazılır (sunucuda `GET /api/scans/{id}/files` ile listelenip indirilebilir):
+
+| Dosya | İçerik |
+|---|---|
+| `complexity/summary.md` | Repo ve yol başına özet: dosya, metot, kod satırı, proje riski, yüksek / kritik metot sayısı |
+| `complexity/<proje>/<repo>.json`, `.md` | Parser yolu: tüm metrikler (varsayılan `complexity.detail=full` ile her metot ve `riskInputs`; `summary` sadece dosya özetleri ve en riskli metotlar) ve Türkçe okunabilir rapor |
+| `complexity/<proje>/<repo>-pmd.json`, `-pmd.md`, `-pmd-violations.xml` | PMD yolu: aynı raporlar ve PMD ihlalleri (her zaman `full`: analizörün PMD yolu `summary` modunda metot sayısını 0 hesaplıyor) |
+
+Klonlanamayan repolar atlanır; bir repoda analiz hata verirse diğerleri devam eder. Test kaynakları varsayılan olarak hariçtir (`complexity.exclude=**/src/test/**`).
+
 ## Paralel işleme
 
 Çok sayıda proje ve repo tarandığında süre büyük ölçüde repoların çekilmesine (klonlama / güncelleme) gider. Bu yüzden:
