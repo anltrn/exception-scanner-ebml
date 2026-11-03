@@ -21,6 +21,9 @@ public final class RepoInfo {
     /** Bu repo için özel olarak istenen dal (ör. GitHub .../tree/develop adresinden) */
     public String requestedBranch = "";
 
+    /** İstenen dal repoda bulunamadı ve varsayılan dal tarandıysa istenen dalın adı (git.branch.fallback) */
+    public String missingBranch = "";
+
     public Path localPath;
     public String branch = "";
     public String commit = "";

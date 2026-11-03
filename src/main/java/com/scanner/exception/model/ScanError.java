@@ -7,6 +7,8 @@ public final class ScanError {
     public enum Stage {
         /** Repo klonlanamadı / güncellenemedi (repo hiç taranmadı) */
         CLONE,
+        /** İstenen dal (git.branch) repoda yok, varsayılan dal tarandı (git.branch.fallback=true) */
+        BRANCH_FALLBACK,
         /** Repo taranırken beklenmeyen hata */
         SCAN,
         /** Repo için bellek yetmedi */

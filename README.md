@@ -36,6 +36,7 @@ mvn -q package
 | `scan.throw.only` | `true` ise sadece doğrudan `throw new ...` şeklindekiler |
 | `scan.global.hierarchy` | `true` (varsayılan): alt sınıflar önce tüm repolardan birlikte çıkarılır; ortak bir repoda tanımlanan `X extends CustomException` diğer repolarda da aranır, repolar arası zincirler de çözülür. Bunun için önce tüm repolar klonlanıp sınıf başlıkları okunur, kullanım taraması sonra başlar. `false`: her repo sadece kendi içinde tanımlanan alt sınıfları bilir |
 | `git.branch` | Boşsa varsayılan dal; `develop` gibi bir dal da verilebilir |
+| `git.branch.fallback` | `true` (varsayılan): `git.branch`'teki dal repoda yoksa reponun varsayılan dalı taranır; logda uyarı çıkar, "Tarama Hataları"na ve `env.exception_scan_error`'a `BRANCH_FALLBACK` kaydı yazılır, "Dal" sütununda taranan dal görünür. `false`: o repo taranmaz (`CLONE` hatası) |
 
 ### Repo seçimi
 
@@ -196,7 +197,7 @@ Tarayıcı bulduğu kullanımları, sınıf ve metot envanterini tutan PostgreSQ
 | `env.exception_usage_type` | Kullanım tipleri (desenlerin karşılığı). Tarayıcı her çalışmada ayar dosyasındaki desenlerle günceller |
 | `env.exception_scan_run` | Her tarama çalıştırması bir kayıt |
 | `env.exception_usage` | Kullanımlar; `class_id` → `env.java_class`, `method_id` → `env.java_method`, `usage_type_code` → kullanım tipi |
-| `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
+| `env.exception_scan_error` | Tarama sırasında karşılaşılan hatalar (klonlanamayan repo, ayrıştırılamayan dosya vb.); `stage` hatanın türü: `CLONE`, `BRANCH_FALLBACK` (istenen dal yok, varsayılan dal tarandı), `SCAN`, `OUT_OF_MEMORY`, `FILE_LISTING`, `EBML_LISTING`, `PARSE`, `READ`, `SKIPPED`, `PROCESS_LABEL` (Excel'deki "Aşama" sütunuyla aynı) |
 | `env.swallowed_exceptions` | Hata yutan catch blokları; `catch_kind` nasıl yuttuğunu gösterir: `EMPTY` (gövde boş veya sadece yorum), `LOG_ONLY` (sadece log, ör. `log.error("x", e)`, `e.printStackTrace()`), `LOG_AND_RETURN` (log ve ardından `return`), `RETURN_ONLY` (log olmadan sadece `return`: `null`, `false`, `""`, `EMPTY`, `return;` ...). Dönen değer hatayı çağırana taşıyorsa (yakalanan değişken ifadede geçiyor, ör. `return handle(ex)`; `...Exception` tipi oluşturuluyor; ya da metodun dönüş tipi exception) yutma sayılmaz). Log sayılan nesne adları `scan.swallowed.log.names` ile verilir. `class_id` / `method_id` kullanımlardaki gibi eşleştirilir. `report.excel` ve `report.swallowed` ayarlarından bağımsız olarak `db.enabled=true` ile yazılır. Kapsamı `scan.swallowed.scope` belirler: `TARGET` (varsayılan) aranan exception'ı yakalayanlar, `ALL` tipine bakmadan hepsi (`catch (Exception e) { }` dahil; aranan sınıf geçmeyen dosyalar da ayrıştırıldığı için tarama uzar), `OFF` hiçbiri |
 | `env.exception_scan_repo` | Her taramada taranan her repo için bir satır (bulgu çıkmasa da): dal, commit, `status` (`SCANNED`, `CLONE_FAILED`, `SCAN_FAILED`) ve sayılar (Java dosyası, kullanım, yutulan exception, `custom_exception_class_count`, hata, süreler). Rapor API'si bir reponun en son taramasını buradan bulur |
 | `env.v_exception_usage_latest` | Son taramanın kullanımları |

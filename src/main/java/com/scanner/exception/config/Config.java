@@ -39,6 +39,8 @@ public final class Config {
     public final boolean includeArchived;
     public final String cloneProtocol;
     public final String branch;
+    /** true: git.branch repoda yoksa varsayılan dal taranır (git.branch.fallback) */
+    public final boolean gitBranchFallback;
     public final boolean sslInsecure;
     public final int gitTimeoutMinutes;
     public final Path workDir;
@@ -278,6 +280,7 @@ public final class Config {
         includeArchived = Boolean.parseBoolean(get(p, "bitbucket.include.archived", "false"));
         cloneProtocol = get(p, "git.protocol", "http").toLowerCase(Locale.ROOT);
         branch = get(p, "git.branch", "");
+        gitBranchFallback = Boolean.parseBoolean(get(p, "git.branch.fallback", "true"));
         sslInsecure = Boolean.parseBoolean(get(p, "ssl.insecure", "false"));
         gitTimeoutMinutes = Integer.parseInt(get(p, "git.timeout.minutes", "15"));
         workDir = Paths.get(get(p, "work.dir", "./scannedRepos"));

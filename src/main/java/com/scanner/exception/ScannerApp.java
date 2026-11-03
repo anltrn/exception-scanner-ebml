@@ -646,6 +646,10 @@ public final class ScannerApp {
         try {
             boolean java = !cfg.exceptionClasses.isEmpty() || cfg.collectAllSwallowed();
             RepoResult result = java ? scanner.scan(repo, hierarchy) : new RepoResult(repo);
+            if (!repo.missingBranch.isEmpty()) {
+                result.errors.add(0, new ScanError(repo, ScanError.Stage.BRANCH_FALLBACK, "", "'" + repo.missingBranch
+                        + "' dalı yok, varsayılan dal (" + repo.branch + ") tarandı"));
+            }
             if (cfg.ebml.enabled) new EbmlScanner(cfg).scan(repo, result);
             return result;
         } catch (RuntimeException e) {

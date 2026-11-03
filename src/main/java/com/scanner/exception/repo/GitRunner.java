@@ -41,10 +41,16 @@ public final class GitRunner {
         Path dir = cfg.workDir.resolve(safe(repo.projectKey)).resolve(safe(repo.slug)).toAbsolutePath();
         String url = repo.cloneUrl.replaceFirst("^(https?://)[^/@]+@", "$1");
         String branch = !repo.requestedBranch.isEmpty() ? repo.requestedBranch : cfg.branch;
+        repo.missingBranch = "";
 
         if (Files.isDirectory(dir.resolve(".git"))) {
             String ref = branch.isEmpty() ? "HEAD" : branch;
-            checkFilterSupport(run(dir, "git", "fetch", "--depth", "1", "--quiet", "origin", ref));
+            try {
+                checkFilterSupport(run(dir, "git", "fetch", "--depth", "1", "--quiet", "origin", ref));
+            } catch (IOException e) {
+                if (!fallBack(repo, branch, e)) throw e;
+                checkFilterSupport(run(dir, "git", "fetch", "--depth", "1", "--quiet", "origin", "HEAD"));
+            }
             if (cfg.gitSparse) {
                 // Sadece gerekli dosyalar; desenler değişmiş olabilir (ör. EBML açıldı), her seferinde yazılır
                 writeSparsePatterns(dir, sparsePatterns());
@@ -63,21 +69,12 @@ public final class GitRunner {
                 }
             }
         } else {
-            if (Files.exists(dir)) deleteRecursively(dir);
-            Files.createDirectories(dir.getParent());
-            List<String> cmd = new ArrayList<String>(Arrays.asList(
-                    "git", "clone", "--depth", "1", "--single-branch", "--quiet"));
-            if (cfg.gitSparse) {
-                cmd.add("--filter=blob:none");
-                cmd.add("--no-checkout");
+            try {
+                cloneRepo(url, dir, branch);
+            } catch (IOException e) {
+                if (!fallBack(repo, branch, e)) throw e;
+                cloneRepo(url, dir, "");
             }
-            if (!branch.isEmpty()) {
-                cmd.add("--branch");
-                cmd.add(branch);
-            }
-            cmd.add(url);
-            cmd.add(dir.toString());
-            checkFilterSupport(run(dir.getParent(), cmd.toArray(new String[0])));
             if (cfg.gitSparse) {
                 writeSparsePatterns(dir, sparsePatterns());
                 // Gerekli dosyaların içerikleri burada tek seferde indirilir
@@ -90,6 +87,65 @@ public final class GitRunner {
         } catch (IOException e) {
             throw new IOException("HEAD okunamadı (repo boş olabilir): " + e.getMessage(), e);
         }
+        // Önceden klonlanmış repoda yerel dalın adı ilk klonlamadaki dal olarak kalır; taranan dal yazılır
+        if (!repo.missingBranch.isEmpty()) {
+            String def = remoteDefaultBranch(dir);
+            if (def != null) repo.branch = def;
+        } else if (!branch.isEmpty()) {
+            repo.branch = branch;
+        }
+    }
+
+    /** Uzak reponun varsayılan dalı ("ref: refs/heads/master	HEAD"); okunamazsa null */
+    private String remoteDefaultBranch(Path dir) {
+        try {
+            for (String line : run(dir, "git", "ls-remote", "--symref", "origin", "HEAD").split("\n")) {
+                if (line.startsWith("ref: refs/heads/")) {
+                    return line.substring("ref: refs/heads/".length()).split("\\s")[0];
+                }
+            }
+        } catch (IOException e) {
+            // dal adı olmadan da taranabilir
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return null;
+    }
+
+    private void cloneRepo(String url, Path dir, String branch) throws IOException, InterruptedException {
+        if (Files.exists(dir)) deleteRecursively(dir);
+        Files.createDirectories(dir.getParent());
+        List<String> cmd = new ArrayList<String>(Arrays.asList(
+                "git", "clone", "--depth", "1", "--single-branch", "--quiet"));
+        if (cfg.gitSparse) {
+            cmd.add("--filter=blob:none");
+            cmd.add("--no-checkout");
+        }
+        if (!branch.isEmpty()) {
+            cmd.add("--branch");
+            cmd.add(branch);
+        }
+        cmd.add(url);
+        cmd.add(dir.toString());
+        checkFilterSupport(run(dir.getParent(), cmd.toArray(new String[0])));
+    }
+
+    /** git'in "dal yok" mesajları: clone "Remote branch X not found", fetch "couldn't find remote ref X" */
+    private static final java.util.regex.Pattern MISSING_BRANCH = java.util.regex.Pattern.compile(
+            "(?i)remote branch \\S+ not found|couldn't find remote ref");
+
+    /**
+     * İstenen dal repoda yoksa ve git.branch.fallback=true ise varsayılan dala düşülür: true döner, uyarı yazılır
+     * ve repo.missingBranch doldurulur. Başka bir hata veya dal verilmemişse false (hata olduğu gibi atılır).
+     */
+    private boolean fallBack(RepoInfo repo, String branch, IOException e) {
+        if (branch.isEmpty() || !cfg.gitBranchFallback || !MISSING_BRANCH.matcher(String.valueOf(e.getMessage())).find()) {
+            return false;
+        }
+        repo.missingBranch = branch;
+        ScannerApp.log("Uyarı: " + repo.id() + " reposunda '" + branch + "' dalı yok, varsayılan dal taranıyor "
+                + "(git.branch.fallback=false ile bu repolar atlanır).");
+        return true;
     }
 
     /** Taramada okunan dosyalar (JavaSourceScanner, ModuleResolver, EbmlScanner) */

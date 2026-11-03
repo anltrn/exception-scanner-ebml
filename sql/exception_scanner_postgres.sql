@@ -160,6 +160,7 @@ CREATE INDEX ix_exception_usage_type   ON env.exception_usage (usage_type_code);
 --  sayfasının karşılığı). Kullanımlarla aynı transaction'da yazılır.
 --  stage:
 --    CLONE          repo klonlanamadı / güncellenemedi (repo hiç taranmadı)
+--    BRANCH_FALLBACK  git.branch'teki dal repoda yok, varsayılan dal tarandı (hata değil, uyarı)
 --    SCAN           repo taranırken beklenmeyen hata
 --    OUT_OF_MEMORY  repo için bellek yetmedi
 --    FILE_LISTING   repodaki dosyalar listelenemedi
@@ -185,7 +186,7 @@ COMMENT ON COLUMN env.exception_scan_error.id IS 'Kayıt numarası (otomatik art
 COMMENT ON COLUMN env.exception_scan_error.scan_run_id IS 'Hatanın oluştuğu tarama (env.exception_scan_run.id); tarama kaydı silinince bu kayıtlar da silinir (ON DELETE CASCADE)';
 COMMENT ON COLUMN env.exception_scan_error.project_key IS 'Hatanın oluştuğu reponun projesi: Bitbucket proje anahtarı; source=GIT için adresteki sahip (owner, bulunamazsa GIT), source=LOCAL için klasör yapısından çıkarılan proje adı';
 COMMENT ON COLUMN env.exception_scan_error.repo IS 'Hatanın oluştuğu reponun slug''ı (source=LOCAL için repo klasörünün adı)';
-COMMENT ON COLUMN env.exception_scan_error.stage IS 'Hatanın türü: CLONE (repo klonlanamadı / güncellenemedi, repo hiç taranmadı), SCAN (repo taranırken beklenmeyen hata), OUT_OF_MEMORY (repo için bellek yetmedi), FILE_LISTING (repodaki dosyalar listelenemedi), EBML_LISTING (EBML / rapor / process dosyaları listelenemedi), PARSE (Java dosyası ayrıştırılamadı, kısmen taranmış olabilir), READ (dosya okunamadı), SKIPPED (dosya scan.max.file.kb sınırından büyük, taranmadı), PROCESS_LABEL (processdefinition.xml okunamadı veya label özelliği yok)';
+COMMENT ON COLUMN env.exception_scan_error.stage IS 'Hatanın türü: CLONE (repo klonlanamadı / güncellenemedi, repo hiç taranmadı), BRANCH_FALLBACK (git.branch''te yazan dal repoda yok, git.branch.fallback=true olduğu için varsayılan dal tarandı; repo taranmıştır, bu bir uyarıdır), SCAN (repo taranırken beklenmeyen hata), OUT_OF_MEMORY (repo için bellek yetmedi), FILE_LISTING (repodaki dosyalar listelenemedi), EBML_LISTING (EBML / rapor / process dosyaları listelenemedi), PARSE (Java dosyası ayrıştırılamadı, kısmen taranmış olabilir), READ (dosya okunamadı), SKIPPED (dosya scan.max.file.kb sınırından büyük, taranmadı), PROCESS_LABEL (processdefinition.xml okunamadı veya label özelliği yok)';
 COMMENT ON COLUMN env.exception_scan_error.file_path IS 'Dosya bazlı hatalarda (PARSE, READ, SKIPPED, PROCESS_LABEL) dosyanın repo içindeki yolu; repo bazlı hatalarda (CLONE, SCAN, OUT_OF_MEMORY, FILE_LISTING, EBML_LISTING) boş';
 COMMENT ON COLUMN env.exception_scan_error.message IS 'Hata mesajı: Java hatasının mesajı, ayrıştırma hatasının açıklaması (en fazla 400 karakter) veya tarayıcının açıklaması (ör. "Dosya çok büyük (3000 KB)..."); mesaj yoksa boş metin';
 COMMENT ON COLUMN env.exception_scan_error.created_at IS 'Kaydın eklendiği an (now()); tarama tek transaction''da yazıldığı için transaction''ın başladığı an olur ve aynı taramanın tüm kayıtlarında aynıdır';
@@ -565,7 +566,7 @@ COMMENT ON COLUMN env.exception_scan_repo.project_name IS 'Projenin görünen ad
 COMMENT ON COLUMN env.exception_scan_repo.repo IS 'Projedeki repo: slug (Bitbucket/git adresindeki repo adı, ör. A3); diğer tablolardaki repo sütunuyla aynı değer';
 COMMENT ON COLUMN env.exception_scan_repo.branch IS 'Taranan dal';
 COMMENT ON COLUMN env.exception_scan_repo.commit_id IS 'Taranan commit; iki tarama arasında kodun değişip değişmediği buradan görülür';
-COMMENT ON COLUMN env.exception_scan_repo.status IS 'SCANNED (tarandı; bulgu olmayabilir), CLONE_FAILED (klonlanamadı, taranmadı), SCAN_FAILED (taranırken hata, bellek yetmedi veya dosyalar listelenemedi; ayrıntı env.exception_scan_error''da)';
+COMMENT ON COLUMN env.exception_scan_repo.status IS 'SCANNED (tarandı; bulgu olmayabilir. İstenen dal yoksa varsayılan dal taranmış olabilir: branch sütunu ve env.exception_scan_error''daki BRANCH_FALLBACK kaydı), CLONE_FAILED (klonlanamadı, taranmadı), SCAN_FAILED (taranırken hata, bellek yetmedi veya dosyalar listelenemedi; ayrıntı env.exception_scan_error''da)';
 COMMENT ON COLUMN env.exception_scan_repo.java_file_count IS 'Repodaki .java dosyası sayısı (scan.exclude.dirs hariç)';
 COMMENT ON COLUMN env.exception_scan_repo.target_file_count IS 'Aranan exception sınıflarından birinin adı geçen dosya sayısı';
 COMMENT ON COLUMN env.exception_scan_repo.parse_failure_count IS 'Ayrıştırılamayan veya okunamayan dosya sayısı';
