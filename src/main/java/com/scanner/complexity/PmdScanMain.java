@@ -132,6 +132,8 @@ public final class PmdScanMain {
                   --violations-xml=<file>  Aşama 1 pmd.xml (vars: JSON adi -violations.xml)
                   --skip-pmd-ruleset       Yalnizca metrik hatti (ruleset kapali)
                   --pipeline=pmd-native|parser-hybrid   (vars: pmd-native)
+                  --state=<file>      Incremental cache JSON (PMD-native: pmd-analyzer-state.json)
+                  --fresh             Ignore existing --state (cold run, still writes state at end)
                   --help
                 """);
     }
@@ -163,6 +165,8 @@ public final class PmdScanMain {
             Path violationsXml = null;
             boolean runRulesetPhase = true;
             ScanPipeline pipeline = ScanPipeline.PMD_NATIVE;
+            Path incrementalState = null;
+            boolean freshIncremental = false;
 
             for (String arg : args) {
                 if (arg.equals("--help") || arg.equals("-h")) {
@@ -207,6 +211,10 @@ public final class PmdScanMain {
                     runRulesetPhase = false;
                 } else if (arg.startsWith("--pipeline=")) {
                     pipeline = ScanPipeline.parse(value(arg));
+                } else if (arg.startsWith("--state=")) {
+                    incrementalState = optionalPath(arg, "--state");
+                } else if (arg.equals("--fresh")) {
+                    freshIncremental = true;
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
@@ -218,7 +226,8 @@ public final class PmdScanMain {
                 violationsXml = violationsXmlSibling(output);
             }
             ScanOptions scanOptions = ScanOptions.fromCli(includes, excludes, workers, progressEvery, detail,
-                    !noDefaultIgnores, null, false, true, 50, true, 0, false, pmdMetricAlignment);
+                    !noDefaultIgnores, incrementalState, freshIncremental, true, 50, true, 0, false,
+                    pmdMetricAlignment);
             return new Options(path, output, markdown, top, charset, languageLevel, scanOptions, riskProfile,
                     riskConfig, ruleset, violationsXml, runRulesetPhase, pipeline, compact, help);
         }

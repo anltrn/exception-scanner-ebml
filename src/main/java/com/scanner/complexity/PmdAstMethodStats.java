@@ -2,11 +2,15 @@ package com.scanner.complexity;
 
 import net.sourceforge.pmd.lang.ast.Node;
 import net.sourceforge.pmd.lang.java.ast.ASTCatchClause;
+import net.sourceforge.pmd.lang.java.ast.ASTDoStatement;
 import net.sourceforge.pmd.lang.java.ast.ASTExecutableDeclaration;
+import net.sourceforge.pmd.lang.java.ast.ASTForStatement;
+import net.sourceforge.pmd.lang.java.ast.ASTIfStatement;
 import net.sourceforge.pmd.lang.java.ast.ASTInfixExpression;
 import net.sourceforge.pmd.lang.java.ast.ASTLambdaExpression;
 import net.sourceforge.pmd.lang.java.ast.ASTLocalVariableDeclaration;
 import net.sourceforge.pmd.lang.java.ast.ASTSwitchLabel;
+import net.sourceforge.pmd.lang.java.ast.ASTWhileStatement;
 
 /** PMD AST uzerinden metod sayaclari (JavaParser yok). */
 final class PmdAstMethodStats {
@@ -60,9 +64,32 @@ final class PmdAstMethodStats {
                 maxTryNest = Math.max(maxTryNest, nextTry);
             }
             switch (name) {
-                case "Statement", "ExpressionStatement", "IfStatement", "WhileStatement", "ForStatement",
-                        "ForeachStatement", "DoStatement", "SynchronizedStatement", "AssertStatement" ->
-                        statements++;
+                case "Statement", "ExpressionStatement", "SynchronizedStatement", "AssertStatement" -> statements++;
+                case "IfStatement" -> {
+                    statements++;
+                    if (node instanceof ASTIfStatement stmt) {
+                        noteConditionBooleanOps(stmt.getCondition());
+                    }
+                }
+                case "WhileStatement" -> {
+                    statements++;
+                    if (node instanceof ASTWhileStatement stmt) {
+                        noteConditionBooleanOps(stmt.getCondition());
+                    }
+                }
+                case "DoStatement" -> {
+                    statements++;
+                    if (node instanceof ASTDoStatement stmt) {
+                        noteConditionBooleanOps(stmt.getCondition());
+                    }
+                }
+                case "ForStatement" -> {
+                    statements++;
+                    if (node instanceof ASTForStatement stmt) {
+                        noteConditionBooleanOps(stmt.getCondition());
+                    }
+                }
+                case "ForeachStatement" -> statements++;
                 case "ReturnStatement", "ThrowStatement", "YieldStatement" -> exits++;
                 case "CatchClause" -> {
                     catches++;
@@ -83,19 +110,18 @@ final class PmdAstMethodStats {
                         switchCases++;
                     }
                 }
-                case "InfixExpression" -> {
-                    if (node instanceof ASTInfixExpression infix) {
-                        String op = infix.getOperator().toString();
-                        if ("&&".equals(op) || "||".equals(op)) {
-                            maxBoolOps = Math.max(maxBoolOps, countBooleanOps(infix));
-                        }
-                    }
-                }
                 default -> { }
             }
             for (Node child : node.children()) {
                 walk(child, nextNest, nextTry);
             }
+        }
+
+        void noteConditionBooleanOps(Node condition) {
+            if (condition == null) {
+                return;
+            }
+            maxBoolOps = Math.max(maxBoolOps, peakBooleanOpsInExpression(condition));
         }
 
         Stats toStats() {
@@ -110,6 +136,26 @@ final class PmdAstMethodStats {
                     "TryStatement", "SwitchStatement", "SynchronizedStatement" -> true;
             default -> false;
         };
+    }
+
+    /** Peak {@code &&}/{@code ||} in one if/loop condition (aligned with {@link MethodQualityMetrics}). */
+    private static int peakBooleanOpsInExpression(Node root) {
+        int peak = 0;
+        for (Node node : root.descendants()) {
+            if (node instanceof ASTInfixExpression infix) {
+                String op = infix.getOperator().toString();
+                if ("&&".equals(op) || "||".equals(op)) {
+                    peak = Math.max(peak, countBooleanOps(infix));
+                }
+            }
+        }
+        if (root instanceof ASTInfixExpression infix) {
+            String op = infix.getOperator().toString();
+            if ("&&".equals(op) || "||".equals(op)) {
+                peak = Math.max(peak, countBooleanOps(infix));
+            }
+        }
+        return peak;
     }
 
     private static int countBooleanOps(ASTInfixExpression infix) {

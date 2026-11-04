@@ -90,7 +90,15 @@ public final class RiskCalculator {
         double mixedCore = profile.dominantWeight() * dominant + profile.blendWeight() * blend;
         double fine = discriminativeFine(values);
         double preClamp = mixedCore + fine;
-        Assessment assessment = composeFromRawScore(preClamp, factors);
+        double preCapScore = clampScore(preClamp);
+        double finalScore = profile.capMethodScoreByLoc(values.codeLines(), preCapScore);
+        if (finalScore + 0.001 < preCapScore) {
+            factors.add(String.format(java.util.Locale.ROOT,
+                    "Short-method score cap: %d code line(s) → max %.0f (uncapped %.1f)",
+                    values.codeLines(), finalScore, preCapScore));
+        }
+        Assessment assessment = new Assessment(roundScore(finalScore), RiskLevel.fromScore(finalScore),
+                List.copyOf(factors));
         double appliedBonus = roundScore(assessment.score() - mixedCore);
         RiskBreakdown breakdown = RiskBreakdown.legacyV1(
                 values.cyclomaticComplexity(), values.codeLines(), values.maxNestingDepth(), values.parameterCount(),

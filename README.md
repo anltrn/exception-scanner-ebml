@@ -443,6 +443,8 @@ Raporlar tarama klasöründe `complexity/` altına yazılır (sunucuda `GET /api
 | `complexity/<proje>/<repo>.json`, `.md` | Parser yolu: tüm metrikler (varsayılan `complexity.detail=full` ile her metot ve `riskInputs`; `summary` sadece dosya özetleri ve en riskli metotlar) ve Türkçe okunabilir rapor |
 | `complexity/<proje>/<repo>-pmd.json`, `-pmd.md`, `-pmd-violations.xml` | PMD yolu: aynı raporlar ve PMD ihlalleri (her zaman `full`: analizörün PMD yolu `summary` modunda metot sayısını 0 hesaplıyor) |
 
+**Artımlı önbellek (varsayılan açık):** Her repo için raporların yanına `*-parser-analyzer-state.json` ve/veya `*-pmd-analyzer-state.json` yazılır; dosya byte hash'i değişmediyse PMD/parser metrik adımı atlanır. Kapatmak: `complexity.cache.enabled=false`. Soğuk koşu: `complexity.cache.fresh=true`. PMD stderr'de 7 adımlı Türkçe log (`[PMD-NATIVE] ▶ ADIM …`) hangi fazda hata olduğunu gösterir.
+
 Klonlanamayan repolar atlanır; bir repoda analiz hata verirse diğerleri devam eder. `complexity.engine=both` ile iki yol sırayla çalışır, her yolun raporu bir sonraki başlamadan yazılıp bellekten bırakılır. "Java heap space" hatasında sırasıyla: `complexity.duplicates.near=false` (PMD CPD ile benzer kod tespiti tüm dosyaların token'larını bellekte tutar; birebir kopyalar yine bulunur), `complexity.workers=2` (bir repoda aynı anda ayrıştırılan dosya sayısı, varsayılan işlemci sayısı), `complexity.engine=parser`; yetmezse pod'a daha fazla bellek verin. Karmaşıklık analizi başlamadan exception bulguları (raporlara ve veritabanına yazılmış olarak) bellekten bırakılır. Test kaynakları varsayılan olarak hariçtir (`complexity.exclude=**/src/test/**`).
 
 ### Veritabanına kayıt

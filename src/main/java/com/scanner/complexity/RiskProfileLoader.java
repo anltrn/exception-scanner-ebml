@@ -90,8 +90,37 @@ public final class RiskProfileLoader {
         god.put("length", findThreshold(methodDims, "length").orElse(new RiskProfile.ThresholdTriple(25, 55, 120)));
         god.put("parameters", findThreshold(methodDims, "parameters").orElse(new RiskProfile.ThresholdTriple(4, 6, 8)));
 
+        List<RiskProfile.MethodLocScoreCap> locCaps = readMethodLocScoreCaps(root, profile);
+
         return new RiskProfile(profileId, modelVersion, compound, mix.dominant(), mix.blend(),
-                List.copyOf(methodDims), List.copyOf(methodGroups), List.copyOf(classDims), Map.copyOf(god));
+                List.copyOf(methodDims), List.copyOf(methodGroups), List.copyOf(classDims), Map.copyOf(god),
+                locCaps);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<RiskProfile.MethodLocScoreCap> readMethodLocScoreCaps(Map<String, Object> root,
+                                                                              Map<String, Object> profile) {
+        Object node = profile.get("method_loc_score_caps");
+        if (node == null) {
+            node = root.get("method_loc_score_caps");
+        }
+        if (!(node instanceof List<?> list) || list.isEmpty()) {
+            return List.of();
+        }
+        List<RiskProfile.MethodLocScoreCap> caps = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                continue;
+            }
+            Object lines = map.get("max_code_lines");
+            Object score = map.get("max_score");
+            if (!(lines instanceof Number linesN) || !(score instanceof Number scoreN)) {
+                continue;
+            }
+            caps.add(new RiskProfile.MethodLocScoreCap(linesN.intValue(), scoreN.doubleValue()));
+        }
+        caps.sort(java.util.Comparator.comparingInt(RiskProfile.MethodLocScoreCap::maxCodeLinesInclusive));
+        return List.copyOf(caps);
     }
 
     @SuppressWarnings("unchecked")

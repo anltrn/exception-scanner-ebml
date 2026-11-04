@@ -113,11 +113,10 @@ public final class ProjectAnalyzer {
         if (incremental && scanOptions.workers() > 1) {
             System.err.println("[STANDALONE] Incremental cache: forcing workers=1 (parallel + state unsupported).");
         }
-        AnalyzerState loadedState = incremental && !scanOptions.ignoreIncrementalCache()
-                ? new StatePersistenceManager().load(stateFile)
-                : new AnalyzerState();
+        String cacheIdentity = IncrementalStateSupport.cacheIdentity("parser", riskCalculator);
+        AnalyzerState loadedState = IncrementalStateSupport.load(stateFile, scanOptions.ignoreIncrementalCache());
         boolean hadPreviousScan = incremental && !scanOptions.ignoreIncrementalCache()
-                && cacheIdentityMatches(loadedState, riskCalculator)
+                && IncrementalStateSupport.cacheIdentityMatches(loadedState, cacheIdentity)
                 && loadedState.files != null && !loadedState.files.isEmpty();
         if (incremental && !scanOptions.ignoreIncrementalCache() && !hadPreviousScan
                 && loadedState.files != null && !loadedState.files.isEmpty()) {
@@ -152,7 +151,7 @@ public final class ProjectAnalyzer {
         }
 
         if (incremental) {
-            persistAnalyzerState(stateFile, files, riskCalculator, semanticHashesByPath,
+            persistAnalyzerState(stateFile, cacheIdentity, files, semanticHashesByPath,
                     scanContext != null ? scanContext.moduleFingerprints() : Map.of());
         }
 
@@ -489,12 +488,12 @@ public final class ProjectAnalyzer {
 
     private static void persistAnalyzerState(
             Path stateFile,
+            String cacheIdentity,
             List<FileMetric> files,
-            RiskCalculator riskCalculator,
             Map<String, String> semanticHashesByPath,
             Map<String, String> moduleFingerprints) {
         AnalyzerState newState = new AnalyzerState();
-        newState.cacheIdentity = currentCacheIdentity(riskCalculator);
+        newState.cacheIdentity = cacheIdentity;
         for (Map.Entry<String, String> entry : moduleFingerprints.entrySet()) {
             AnalyzerState.ModuleState moduleState = new AnalyzerState.ModuleState();
             moduleState.fingerprint = entry.getValue();
@@ -555,19 +554,4 @@ public final class ProjectAnalyzer {
         return new Thread(null, task, "standalone-parser-" + id, WORKER_STACK_BYTES);
     }
 
-    private static final int CACHE_SCHEMA_VERSION = 4;
-
-    private static String currentCacheIdentity(RiskCalculator calculator) {
-        RiskProfile profile = calculator.profile();
-        return "schema=" + CACHE_SCHEMA_VERSION
-                + ";profile=" + profile.profileId()
-                + ";model=" + profile.modelVersion();
-    }
-
-    private static boolean cacheIdentityMatches(AnalyzerState state, RiskCalculator calculator) {
-        if (state == null || state.cacheIdentity == null || state.cacheIdentity.isBlank()) {
-            return false;
-        }
-        return state.cacheIdentity.equals(currentCacheIdentity(calculator));
-    }
 }

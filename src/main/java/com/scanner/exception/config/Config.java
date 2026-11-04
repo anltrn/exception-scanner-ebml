@@ -199,6 +199,10 @@ public final class Config {
         public final boolean markdown;
         /** Boş: yolun varsayılanı (parser: enterprise-java, pmd: enterprise-java-pmd) */
         public final String riskProfile;
+        /** Repo başına analyzer-state.json (rapor klasöründe *-parser-analyzer-state.json / *-pmd-analyzer-state.json) */
+        public final boolean incrementalCache;
+        /** true: önceki state yok sayılır, koşu sonunda yeniden yazılır */
+        public final boolean freshCache;
         public final List<String> include;
         public final List<String> exclude;
 
@@ -226,6 +230,8 @@ public final class Config {
             workers = Integer.parseInt(get(p, "complexity.workers", "0").trim());
             if (workers < 0) throw new IllegalArgumentException("complexity.workers 0 veya pozitif olmalı: " + workers);
             riskProfile = get(p, "complexity.risk.profile", "").trim();
+            incrementalCache = Boolean.parseBoolean(get(p, "complexity.cache.enabled", "true"));
+            freshCache = Boolean.parseBoolean(get(p, "complexity.cache.fresh", "false"));
             include = list(get(p, "complexity.include", ""));
             exclude = list(get(p, "complexity.exclude", "**/src/test/**"));
         }

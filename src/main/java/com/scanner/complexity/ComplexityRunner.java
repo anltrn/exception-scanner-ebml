@@ -54,7 +54,8 @@ public final class ComplexityRunner {
 
     private Result parser(Path sourceRoot, Path baseName) throws IOException {
         RiskCalculator risk = RiskProfileLoader.createCalculator(profile("enterprise-java"), null);
-        AnalysisReport report = new ProjectAnalyzer(cfg.charset, cfg.top, cfg.languageLevel, options(cfg.fullDetail), risk)
+        AnalysisReport report = new ProjectAnalyzer(cfg.charset, cfg.top, cfg.languageLevel,
+                options(cfg.fullDetail, baseName, Engine.PARSER), risk)
                 .analyze(sourceRoot, new ScanRunContext());
         return write("parser", report, sibling(baseName, ".json"), sibling(baseName, ".md"));
     }
@@ -70,7 +71,8 @@ public final class ComplexityRunner {
             Path violations = sibling(baseName, "-pmd-violations.xml");
             Files.createDirectories(violations.toAbsolutePath().getParent());
             // PMD yolu summary modunda metotları özet hesaplanmadan önce atıyor (metot sayısı 0 çıkıyor); hep full
-            AnalysisReport report = new PmdNativeProjectScanner(cfg.charset, cfg.languageLevel, options(true), cfg.top,
+            AnalysisReport report = new PmdNativeProjectScanner(cfg.charset, cfg.languageLevel,
+                    options(true, baseName, Engine.PMD), cfg.top,
                     risk, ruleset, violations, true).scan(sourceRoot);
             return write("pmd", report, sibling(baseName, "-pmd.json"), sibling(baseName, "-pmd.md"));
         } finally {
@@ -91,11 +93,20 @@ public final class ComplexityRunner {
         return new Result(engine, report, json, cfg.markdown ? md : null);
     }
 
-    private ScanOptions options(boolean fullDetail) {
+    private ScanOptions options(boolean fullDetail, Path baseName, Engine engine) {
         ScanOptions d = ScanOptions.defaults();
+        Path stateFile = null;
+        if (cfg.incrementalCache) {
+            String suffix = engine == Engine.PMD ? "-pmd-analyzer-state.json" : "-parser-analyzer-state.json";
+            stateFile = sibling(baseName, suffix);
+            System.err.println("[COMPLEXITY] Artımlı önbellek (" + engine.name().toLowerCase(java.util.Locale.ROOT)
+                    + "): " + stateFile.toAbsolutePath().normalize()
+                    + (cfg.freshCache ? " (--fresh)" : ""));
+        }
         return new ScanOptions(cfg.workers > 0 ? cfg.workers : d.workers(), d.progressEvery(), cfg.include, cfg.exclude,
                 fullDetail ? ScanOptions.ReportDetail.FULL : ScanOptions.ReportDetail.SUMMARY,
-                true, null, false, cfg.duplicates, d.minDuplicateTokens(), cfg.duplicates && cfg.nearDuplicates,
+                true, stateFile, cfg.freshCache, cfg.duplicates, d.minDuplicateTokens(),
+                cfg.duplicates && cfg.nearDuplicates,
                 d.nearDuplicateAutoSkipMinFiles(), false, d.pmdMetricAlignment());
     }
 

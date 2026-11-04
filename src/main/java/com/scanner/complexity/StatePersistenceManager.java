@@ -38,8 +38,8 @@ final class StatePersistenceManager {
             }
             return state;
         } catch (IOException | JsonSyntaxException e) {
-            System.err.println("[WARN] Could not read state file " + stateFile + " (" + e.getMessage()
-                    + "); starting with an empty cache.");
+            System.err.println("[ÖNBELLEK] ⚠ State dosyası okunamadı: " + stateFile
+                    + " — " + e.getMessage() + ". Boş önbellekle devam ediliyor.");
             return new AnalyzerState();
         }
     }
@@ -56,7 +56,8 @@ final class StatePersistenceManager {
             }
             Files.writeString(stateFile, gson.toJson(state), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            System.err.println("[WARN] Could not write state file " + stateFile + ": " + e.getMessage());
+            System.err.println("[ÖNBELLEK] ✗ State dosyası yazılamadı: " + stateFile
+                    + " — " + e.getMessage());
         }
     }
 }

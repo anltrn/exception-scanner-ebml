@@ -4,6 +4,8 @@ import com.google.gson.stream.JsonWriter;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,6 +32,7 @@ public final class AnalysisReportJsonWriter {
         w.name("analyzedPath").value(report.analyzedPath());
         w.name("parserLanguageLevel").value(report.parserLanguageLevel());
         writeRiskModel(w, report.riskModel());
+        writeJsonLegend(w, report);
         writeSummary(w, report.summary());
         writeScanDiagnostics(w, report.scanDiagnostics());
         writeCacheStatistics(w, report.cacheStatistics());
@@ -39,7 +42,7 @@ public final class AnalysisReportJsonWriter {
         writePmdRulesetPhase(w, report.pmdRulesetPhase());
         writeHotspots(w, report.topRiskyMethods());
         String pipeline = report.tool().toLowerCase(Locale.ROOT).contains("pmd") ? "pmd-native" : "parser";
-        writeFiles(w, report.files(), report.analyzedPath(), report.riskModel().version(), pipeline);
+        writeFiles(w, report.files(), report.analyzedPath(), report.riskModel(), pipeline);
         writeErrors(w, report.errors());
         w.endObject();
     }
@@ -168,7 +171,8 @@ public final class AnalysisReportJsonWriter {
     }
 
     private static void writeFiles(JsonWriter w, List<AnalysisReport.FileMetric> files, String analyzedPath,
-                                   String profileVersion, String pipeline) throws IOException {
+                                   AnalysisReport.RiskModel riskModel, String pipeline) throws IOException {
+        String profileVersion = riskModel.version();
         w.name("files");
         w.beginArray();
         for (AnalysisReport.FileMetric file : files) {
@@ -212,7 +216,7 @@ public final class AnalysisReportJsonWriter {
                 w.name("methods");
                 w.beginArray();
                 for (MethodMetric m : type.methods()) {
-                    writeMethod(w, file.path(), type.name(), m, analyzedPath, profileVersion, pipeline);
+                    writeMethod(w, file.path(), type.name(), m, analyzedPath, profileVersion, pipeline, riskModel);
                 }
                 w.endArray();
                 w.endObject();
@@ -224,7 +228,8 @@ public final class AnalysisReportJsonWriter {
     }
 
     private static void writeMethod(JsonWriter w, String filePath, String className, MethodMetric m,
-                                    String analyzedPath, String profileVersion, String pipeline)
+                                    String analyzedPath, String profileVersion, String pipeline,
+                                    AnalysisReport.RiskModel riskModel)
             throws IOException {
         w.beginObject();
         w.name("methodUid").value(methodUid(filePath, className, m.signature(), m.startLine()));
@@ -262,6 +267,7 @@ public final class AnalysisReportJsonWriter {
         writeStringList(w, "riskFactors", m.riskFactors());
         if (m.riskBreakdown() != null) {
             writeBreakdown(w, m.riskBreakdown());
+            writeRiskScoreExplain(w, m, m.riskBreakdown(), riskModel);
         }
         writeRiskInputs(w, m, analyzedPath, profileVersion, pipeline);
         writeHalstead(w, "halstead", m.halstead());
@@ -271,7 +277,139 @@ public final class AnalysisReportJsonWriter {
         w.name("analysisReused").value(m.analysisReused());
         w.name("bodyHash").value(m.bodyHash());
         w.name("structuralHash").value(m.structuralHash());
+        writeHashMeta(w, m);
         w.endObject();
+    }
+
+    /** Root-level hints for JSON consumers (DB host, diff tools). */
+    private static void writeJsonLegend(JsonWriter w, AnalysisReport report) throws IOException {
+        w.name("jsonLegend");
+        w.beginObject();
+        w.name("riskScoreDimensions").value(
+                "Per method: rawValue = counted metric; subScore = 0-100; threshold* = profile dikkat/yuksek/kritik.");
+        w.name("riskScoreComposition").value(
+                "finalScore ≈ dominantWeight×max(subScore)+blendWeight×weightedBlend; see riskModel.formula.");
+        w.name("methodHash").value(
+                "Incremental cache key (analyzer-state.json or pmd-analyzer-state.json). Independent of scan_run_id / DB.");
+        w.name("analysisReused").value(
+                "true = reused prior risk/metrics from state (methodHash unchanged). File-level skip sets all methods reused.");
+        w.name("bodyHash").value("Duplicate detection: BIREBIR_METIN (normalized body text, names/literals kept).");
+        w.name("structuralHash").value(
+                "Duplicate detection: YAPISAL_KLON (identifiers/literals abstracted to ID/LIT).");
+        w.name("scanRunId").value("Not in analyzer JSON — inventory host sets UUID per scan when loading DB.");
+        w.name("incrementalCache").value(report.cacheStatistics() != null
+                ? "See cacheStatistics (--state=). New scan_run_id does not disable local file cache."
+                : "No --state= on this run; every file was fully analyzed.");
+        w.endObject();
+    }
+
+    private static void writeRiskScoreExplain(JsonWriter w, MethodMetric m, RiskBreakdown b,
+                                              AnalysisReport.RiskModel riskModel) throws IOException {
+        String driverId = RiskBreakdownUtil.dominantDriver(b);
+        w.name("riskScoreComposition");
+        w.beginObject();
+        w.name("dominantDriverId").value(driverId);
+        w.name("dominantDriverLabelTr").value(RiskBreakdownUtil.driverLabelTr(driverId));
+        w.name("dominantSubScore").value(b.dominantSubScore());
+        w.name("weightedBlend").value(b.weightedBlend());
+        w.name("compoundBonus").value(b.compoundBonus());
+        w.name("finalScore").value(b.finalScore());
+        w.endObject();
+
+        List<DimensionRow> rows = new ArrayList<>();
+        for (Map.Entry<String, List<Integer>> entry : riskModel.thresholds().entrySet()) {
+            String id = entry.getKey();
+            List<Integer> t = entry.getValue();
+            if (t == null || t.size() < 3) {
+                continue;
+            }
+            double sub = subScoreForDimensionId(b, id);
+            int raw = rawValueForDimensionId(m, id);
+            if (sub < 0.01 && raw == 0) {
+                continue;
+            }
+            rows.add(new DimensionRow(id, RiskBreakdownUtil.driverLabelTr(id), raw, sub, t.get(0), t.get(1), t.get(2),
+                    riskModel.weights().getOrDefault(id, 0.0)));
+        }
+        rows.sort(Comparator.comparingDouble(DimensionRow::subScore).reversed());
+
+        w.name("riskScoreDimensions");
+        w.beginArray();
+        for (DimensionRow row : rows) {
+            w.beginObject();
+            w.name("id").value(row.id());
+            w.name("labelTr").value(row.labelTr());
+            w.name("rawValue").value(row.rawValue());
+            w.name("subScore").value(row.subScore());
+            w.name("thresholdDikkat").value(row.dikkat());
+            w.name("thresholdYuksek").value(row.yuksek());
+            w.name("thresholdKritik").value(row.kritik());
+            w.name("blendWeight").value(row.blendWeight());
+            w.endObject();
+        }
+        w.endArray();
+    }
+
+    private static void writeHashMeta(JsonWriter w, MethodMetric m) throws IOException {
+        w.name("hashMeta");
+        w.beginObject();
+        w.name("methodHashPurpose").value("Incremental cache key (local state file for this pipeline).");
+        w.name("analysisReusedMeaning").value(m.analysisReused()
+                ? "Skipped full re-score; prior metrics copied (methodHash match)."
+                : "Full metric/risk pass for this method.");
+        w.name("bodyHashPurpose").value("Exact duplicate fingerprint (duplicateGroups BIREBIR_METIN).");
+        w.name("structuralHashPurpose").value("Structural clone fingerprint (duplicateGroups YAPISAL_KLON).");
+        w.endObject();
+    }
+
+    private record DimensionRow(String id, String labelTr, int rawValue, double subScore,
+                                int dikkat, int yuksek, int kritik, double blendWeight) {
+    }
+
+    private static double subScoreForDimensionId(RiskBreakdown b, String id) {
+        return switch (id) {
+            case "branching" -> b.ccSubScore();
+            case "length" -> b.locSubScore();
+            case "nesting" -> b.nestingSubScore();
+            case "parameters" -> b.paramsSubScore();
+            case "cognitive" -> b.cognitiveSubScore();
+            case "outboundDistinctCalls" -> b.outboundSubScore();
+            case "exitPoints" -> b.exitSubScore();
+            default -> b.extraSubScores().getOrDefault(id, 0.0);
+        };
+    }
+
+    private static int rawValueForDimensionId(MethodMetric m, String id) {
+        MethodScanValues scan = MethodScanValues.fromMetric(m);
+        return switch (id) {
+            case "branching" -> scan.cyclomaticComplexity();
+            case "length" -> scan.codeLines();
+            case "nesting" -> scan.maxNestingDepth();
+            case "parameters" -> scan.parameterCount();
+            case "cognitive" -> scan.cognitiveComplexity();
+            case "logicalStatements" -> scan.logicalStatements();
+            case "exitPoints" -> scan.exitPoints();
+            case "lambdaCount" -> scan.lambdaCount();
+            case "switchCases" -> scan.switchCases();
+            case "maxTryNestingDepth" -> scan.maxTryNestingDepth();
+            case "localVariableCount" -> scan.localVariableCount();
+            case "maxMethodCallChainLength" -> scan.maxMethodCallChainLength();
+            case "catchClauses" -> scan.catchClauses();
+            case "emptyCatchBlocks" -> scan.emptyCatchBlocks();
+            case "catchExceptionOrThrowable" -> scan.catchExceptionOrThrowable();
+            case "catchWithOnlyPrintStackTrace" -> scan.catchWithOnlyPrintStackTrace();
+            case "primitiveObsessionIndex" -> scan.primitiveObsessionIndex();
+            case "maxBooleanOperatorsInCondition" -> scan.maxBooleanOperatorsInCondition();
+            case "halsteadDifficulty" -> scan.halsteadDifficultyRounded();
+            case "halsteadEffort" -> scan.halsteadEffortRounded();
+            case "rawTypeUsage" -> scan.rawTypeUsage();
+            case "stringConcatInLoop" -> scan.stringConcatInLoop();
+            case "hardcodedLiteralCount" -> scan.hardcodedLiteralCount();
+            case "swallowedExceptionSmells" -> scan.swallowedExceptionSmells();
+            case "genericExceptionSmells" -> scan.genericExceptionSmells();
+            case "outboundDistinctCalls" -> scan.outboundDistinctCalls();
+            default -> 0;
+        };
     }
 
     private static void writeDuplicateStatistics(JsonWriter w, AnalysisReport.DuplicateStatistics stats)
@@ -360,6 +498,7 @@ public final class AnalysisReportJsonWriter {
     }
 
     /** Host uygulamasının DB {@code risk_inputs_json} alanına map edebileceği özet (JDBC bu repoda yok). */
+    /** {@link ComplexityJson} ve paket içi rapor yazımı */
     static void writeRiskInputs(JsonWriter w, MethodMetric m, String analyzedPath, String profileVersion,
                                         String pipeline) throws IOException {
         w.name("riskInputs");

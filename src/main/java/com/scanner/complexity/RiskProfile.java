@@ -15,7 +15,20 @@ public record RiskProfile(
         List<ScoredDimension<MethodScanValues>> methodDimensions,
         List<DimensionGroup> methodDimensionGroups,
         List<ScoredDimension<ClassScanValues>> classDimensions,
-        Map<String, ThresholdTriple> godMethodThresholds) {
+        Map<String, ThresholdTriple> godMethodThresholds,
+        List<MethodLocScoreCap> methodLocScoreCaps) {
+
+    /** Upper bound on final method score when {@code codeLines} is at or below {@link #maxCodeLinesInclusive()}. */
+    public record MethodLocScoreCap(int maxCodeLinesInclusive, double maxScore) {
+        public MethodLocScoreCap {
+            if (maxCodeLinesInclusive < 0) {
+                throw new IllegalArgumentException("maxCodeLinesInclusive must be >= 0");
+            }
+            if (maxScore < 0 || maxScore > RiskCalculator.SCORE_MAX) {
+                throw new IllegalArgumentException("maxScore must be in [0, 100]");
+            }
+        }
+    }
 
     public record DimensionGroup(String id, double weight, List<String> memberIds) {
     }
@@ -34,6 +47,21 @@ public record RiskProfile(
         }
         dominantWeight = dominantWeight / sum;
         blendWeight = blendWeight / sum;
+        methodLocScoreCaps = methodLocScoreCaps == null ? List.of() : List.copyOf(methodLocScoreCaps);
+    }
+
+    /** Applies all matching tiers; smallest {@code maxScore} wins when several tiers match. */
+    public double capMethodScoreByLoc(int codeLines, double score) {
+        if (methodLocScoreCaps.isEmpty() || codeLines < 0) {
+            return score;
+        }
+        double capped = score;
+        for (MethodLocScoreCap tier : methodLocScoreCaps) {
+            if (codeLines <= tier.maxCodeLinesInclusive()) {
+                capped = Math.min(capped, tier.maxScore());
+            }
+        }
+        return capped;
     }
 
     public record ThresholdTriple(int dikkat, int yuksek, int kritik) {
